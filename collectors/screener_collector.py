@@ -1,8 +1,24 @@
 import pandas as pd
 import yfinance as yf
 import os
+import sys
 import time
 from datetime import datetime
+
+
+# =====================================
+# PROJECT ROOT PATH FIX
+# =====================================
+
+sys.path.append(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            ".."
+        )
+    )
+)
+
 
 from utils.sector_classifier import classify_sector
 from utils.market_cap_classifier import classify_market_cap
