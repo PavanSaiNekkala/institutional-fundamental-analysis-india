@@ -2,7 +2,8 @@ import pandas as pd
 import os
 
 
-INPUT_FILE = "data/exports/ownership_scores.csv"
+INPUT_FILE = "data/exports/valuation_scores.csv"
+
 OUTPUT_FILE = "data/exports/final_rankings.csv"
 
 
@@ -12,11 +13,13 @@ def calculate_final_score(df):
 
     df["FINAL_SCORE"] = (
 
-        df["GROWTH_SCORE"] * 0.40 +
+        df["GROWTH_SCORE"] * 0.30 +
 
-        df["QUALITY_SCORE"] * 0.35 +
+        df["QUALITY_SCORE"] * 0.30 +
 
-        df["OWNERSHIP_SCORE"] * 0.25
+        df["OWNERSHIP_SCORE"] * 0.20 +
+
+        df["VALUATION_SCORE"] * 0.20
     )
 
     return df
@@ -44,16 +47,68 @@ def rank_stocks(df):
         ascending=False
     )
 
-    df["FINAL_RANK"] = range(1, len(df) + 1)
+    df["FINAL_RANK"] = range(
+        1,
+        len(df) + 1
+    )
 
-    df["RATING"] = df["FINAL_SCORE"].apply(assign_rating)
+    df["RATING"] = df[
+        "FINAL_SCORE"
+    ].apply(assign_rating)
 
     return df
 
 
+def select_output_columns(df):
+
+    columns = [
+
+        "FINAL_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "PE_RATIO",
+
+        "PRICE_TO_BOOK",
+
+        "ROE",
+
+        "REVENUE_GROWTH",
+
+        "EARNINGS_GROWTH",
+
+        "PROMOTER_HOLDING",
+
+        "FII_HOLDING",
+
+        "DII_HOLDING",
+
+        "GROWTH_SCORE",
+
+        "QUALITY_SCORE",
+
+        "OWNERSHIP_SCORE",
+
+        "VALUATION_SCORE",
+
+        "FINAL_SCORE",
+
+        "RATING"
+    ]
+
+    available_columns = [
+        col for col in columns
+        if col in df.columns
+    ]
+
+    return df[available_columns]
+
+
 def main():
 
-    print("Loading institutional scoring dataset...")
+    print("Loading valuation-ranked dataset...")
 
     df = pd.read_csv(INPUT_FILE)
 
@@ -61,28 +116,28 @@ def main():
 
     df = rank_stocks(df)
 
-    os.makedirs("data/exports", exist_ok=True)
+    final_df = select_output_columns(df)
 
-    df.to_csv(OUTPUT_FILE, index=False)
+    os.makedirs(
+        "data/exports",
+        exist_ok=True
+    )
+
+    final_df.to_csv(
+        OUTPUT_FILE,
+        index=False
+    )
 
     print("\nTop Institutional Picks:\n")
 
     print(
-        df[
-            [
-                "FINAL_RANK",
-                "SYMBOL",
-                "SECTOR",
-                "GROWTH_SCORE",
-                "QUALITY_SCORE",
-                "OWNERSHIP_SCORE",
-                "FINAL_SCORE",
-                "RATING"
-            ]
-        ].head(20)
+        final_df.head(20)
     )
 
-    print(f"\nFinal rankings saved to: {OUTPUT_FILE}")
+    print(
+        f"\nFinal rankings saved to: "
+        f"{OUTPUT_FILE}"
+    )
 
 
 if __name__ == "__main__":
