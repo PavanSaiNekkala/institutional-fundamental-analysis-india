@@ -2,88 +2,117 @@ import pandas as pd
 import os
 
 
-INPUT_FILE = "data/exports/growth_scores.csv"
-OUTPUT_FILE = "data/exports/quality_scores.csv"
+INPUT_FILE = "data/exports/quality_scores.csv"
+
+OWNERSHIP_FILE = "data/ownership/shareholding.csv"
+
+OUTPUT_FILE = "data/exports/ownership_scores.csv"
 
 
-def calculate_quality_score(df):
+def load_ownership_data():
 
-    print("Calculating institutional quality scores...")
-
-    # ROE Score
-    df["ROE_SCORE"] = (
-        df["ROE"].fillna(0) * 100
+    ownership_df = pd.read_csv(
+        OWNERSHIP_FILE
     )
 
-    # Operating Margin Score
-    df["OPERATING_MARGIN_SCORE"] = (
-        df["OPERATING_MARGIN"].fillna(0) * 100
+    return ownership_df
+
+
+def merge_ownership(df, ownership_df):
+
+    merged_df = pd.merge(
+        df,
+        ownership_df,
+        on="SYMBOL",
+        how="left"
     )
 
-    # Profit Margin Score
-    df["PROFIT_MARGIN_SCORE"] = (
-        df["PROFIT_MARGIN"].fillna(0) * 100
+    return merged_df
+
+
+def calculate_ownership_score(df):
+
+    print("Calculating real ownership scores...")
+
+    promoter_score = (
+        df["PROMOTER_HOLDING"].fillna(0) * 0.35
     )
 
-    # Debt Penalty
-    df["DEBT_PENALTY"] = (
-        df["DEBT_TO_EQUITY"].fillna(0)
+    fii_score = (
+        df["FII_HOLDING"].fillna(0) * 0.30
     )
 
-    # Final Quality Score
-    df["QUALITY_SCORE"] = (
-        df["ROE_SCORE"] * 0.35 +
-        df["OPERATING_MARGIN_SCORE"] * 0.30 +
-        df["PROFIT_MARGIN_SCORE"] * 0.25 -
-        df["DEBT_PENALTY"] * 0.10
+    dii_score = (
+        df["DII_HOLDING"].fillna(0) * 0.25
+    )
+
+    pledge_penalty = (
+        df["PLEDGE_PERCENT"].fillna(0) * 0.10
+    )
+
+    df["OWNERSHIP_SCORE"] = (
+
+        promoter_score +
+
+        fii_score +
+
+        dii_score -
+
+        pledge_penalty
     )
 
     return df
 
 
-def rank_quality_stocks(df):
+def rank_ownership(df):
 
     df = df.sort_values(
-        by="QUALITY_SCORE",
+        by="OWNERSHIP_SCORE",
         ascending=False
     )
 
-    df["QUALITY_RANK"] = range(1, len(df) + 1)
+    df["OWNERSHIP_RANK"] = range(
+        1,
+        len(df) + 1
+    )
 
     return df
 
 
 def main():
 
-    print("Loading institutional growth dataset...")
+    print("Loading quality scores...")
 
     df = pd.read_csv(INPUT_FILE)
 
-    df = calculate_quality_score(df)
+    ownership_df = load_ownership_data()
 
-    df = rank_quality_stocks(df)
+    df = merge_ownership(df, ownership_df)
+
+    df = calculate_ownership_score(df)
+
+    df = rank_ownership(df)
 
     os.makedirs("data/exports", exist_ok=True)
 
     df.to_csv(OUTPUT_FILE, index=False)
 
-    print("\nTop Quality Stocks:\n")
+    print("\nTop Ownership Ranked Stocks:\n")
 
     print(
         df[
             [
                 "SYMBOL",
-                "ROE",
-                "OPERATING_MARGIN",
-                "PROFIT_MARGIN",
-                "DEBT_TO_EQUITY",
-                "QUALITY_SCORE",
-                "QUALITY_RANK"
+                "PROMOTER_HOLDING",
+                "FII_HOLDING",
+                "DII_HOLDING",
+                "OWNERSHIP_SCORE",
+                "OWNERSHIP_RANK"
             ]
         ].head(10)
     )
 
-    print(f"\nQuality rankings saved to: {OUTPUT_FILE}")
+    print(f"\nSaved to: {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
