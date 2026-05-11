@@ -5,9 +5,6 @@ import os
 
 
 def fetch_nse_stock_universe():
-    """
-    Fetch all NSE equity symbols
-    """
 
     print("Fetching NSE stock universe...")
 
@@ -23,9 +20,6 @@ def fetch_nse_stock_universe():
 
 
 def save_stock_universe(df):
-    """
-    Save NSE stock universe
-    """
 
     os.makedirs("data/raw", exist_ok=True)
 
