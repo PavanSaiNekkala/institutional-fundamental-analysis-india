@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 
 from utils.sector_classifier import classify_sector
+from utils.market_cap_classifier import classify_market_cap
 
 
 UNIVERSE_FILE = "data/raw/nse_stock_universe.csv"
@@ -31,11 +32,24 @@ def fetch_fundamentals(symbol):
 
         info = stock.info
 
+        market_cap = info.get("marketCap")
+
+        sector = classify_sector(
+            info.get("sector"),
+            info.get("industry")
+        )
+
+        market_cap_category = classify_market_cap(
+            market_cap
+        )
+
         data = {
 
             "SYMBOL": symbol.replace(".NS", ""),
 
-            "MARKET_CAP": info.get("marketCap"),
+            "MARKET_CAP": market_cap,
+
+            "MARKET_CAP_CATEGORY": market_cap_category,
 
             "PE_RATIO": info.get("trailingPE"),
 
@@ -55,10 +69,7 @@ def fetch_fundamentals(symbol):
 
             "CURRENT_PRICE": info.get("currentPrice"),
 
-            "SECTOR": classify_sector(
-                info.get("sector"),
-                info.get("industry")
-            ),
+            "SECTOR": sector,
 
             "RAW_SECTOR": info.get("sector"),
 
@@ -124,7 +135,7 @@ def main():
 
             failed += 1
 
-        # Prevent rate limiting
+        # Prevent Yahoo Finance rate limits
         time.sleep(0.5)
 
     df = pd.DataFrame(all_data)
@@ -156,6 +167,13 @@ def main():
     )
 
     print(f"\nSaved to: {OUTPUT_FILE}")
+
+    print("\nMarket Cap Distribution:\n")
+
+    print(
+        df["MARKET_CAP_CATEGORY"]
+        .value_counts()
+    )
 
     print("\nSector Distribution:\n")
 
