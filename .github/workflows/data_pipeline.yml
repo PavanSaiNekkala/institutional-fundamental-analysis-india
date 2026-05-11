@@ -1,0 +1,87 @@
+name: Institutional Data Pipeline
+
+on:
+
+  schedule:
+    - cron: "0 3 * * 1-5"
+
+  workflow_dispatch:
+
+
+jobs:
+
+  institutional-analysis:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+
+        with:
+          python-version: "3.11"
+
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+
+      - name: Run NSE Collector
+        run: |
+          python collectors/nse_collector.py
+
+
+      - name: Run Financial Collector
+        run: |
+          python collectors/screener_collector.py
+
+
+      - name: Run Data Cleaner
+        run: |
+          python preprocessing/cleaner.py
+
+
+      - name: Run Growth Scoring
+        run: |
+          python scoring/growth_score.py
+
+
+      - name: Run Quality Scoring
+        run: |
+          python scoring/quality_score.py
+
+
+      - name: Run Ownership Scoring
+        run: |
+          python scoring/ownership_score.py
+
+
+      - name: Run Final Ranking Engine
+        run: |
+          python scoring/final_ranker.py
+
+
+      - name: Run Compounder Detector
+        run: |
+          python analytics/compounder_detector.py
+
+
+      - name: Run Institutional Buying
+        run: |
+          python analytics/institutional_buying.py
+
+
+      - name: Run Sector Rotation
+        run: |
+          python analytics/sector_rotation.py
+
+
+      - name: Generate Excel Report
+        run: |
+          python exports/excel_exporter.py
