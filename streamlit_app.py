@@ -26,7 +26,9 @@ required_files = [
 
     "data/exports/factor_scores.csv",
 
-    "data/exports/model_portfolio.csv"
+    "data/exports/model_portfolio.csv",
+
+    "data/exports/ai_research_reports.csv"
 ]
 
 
@@ -61,6 +63,8 @@ python analytics/compounder_detector.py
 python analytics/institutional_buying.py
 python analytics/sector_rotation.py
 python analytics/portfolio_builder.py
+python analytics/risk_engine.py
+python analytics/ai_research_assistant.py
     """)
 
     st.stop()
@@ -97,6 +101,10 @@ def load_data():
         "data/exports/model_portfolio.csv"
     )
 
+    ai_reports = pd.read_csv(
+        "data/exports/ai_research_reports.csv"
+    )
+
     return (
 
         rankings,
@@ -109,7 +117,9 @@ def load_data():
 
         factor_scores,
 
-        portfolio
+        portfolio,
+
+        ai_reports
     )
 
 
@@ -124,7 +134,9 @@ def load_data():
 
     factor_scores,
 
-    portfolio
+    portfolio,
+
+    ai_reports
 
 ) = load_data()
 
@@ -237,7 +249,7 @@ col4.metric(
 # TABS
 # =====================================================
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
     "🏆 Rankings",
 
@@ -249,7 +261,9 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
     "🔥 Heatmaps",
 
-    "📁 Portfolio"
+    "📁 Portfolio",
+
+    "🤖 AI Research"
 ])
 
 
@@ -765,6 +779,69 @@ with tab6:
         fig11,
         use_container_width=True
     )
+
+
+# =====================================================
+# TAB 7 — AI RESEARCH
+# =====================================================
+
+with tab7:
+
+    st.subheader(
+        "AI Institutional Research Assistant"
+    )
+
+    selected_stock = st.selectbox(
+
+        "Select Stock",
+
+        sorted(
+            ai_reports["SYMBOL"].unique()
+        )
+    )
+
+    stock_data = ai_reports[
+        ai_reports["SYMBOL"] == selected_stock
+    ]
+
+    if not stock_data.empty:
+
+        row = stock_data.iloc[0]
+
+        st.markdown(
+            f"## {selected_stock}"
+        )
+
+        metric1, metric2, metric3 = st.columns(3)
+
+        metric1.metric(
+            "Institutional Rating",
+            row["RATING"]
+        )
+
+        metric2.metric(
+            "Factor Score",
+            round(
+                row["FACTOR_SCORE"],
+                2
+            )
+        )
+
+        metric3.metric(
+            "Final Score",
+            round(
+                row["FINAL_SCORE"],
+                2
+            )
+        )
+
+        st.markdown(
+            "### AI Research Summary"
+        )
+
+        st.write(
+            row["AI_RESEARCH_SUMMARY"]
+        )
 
 
 # =====================================================
