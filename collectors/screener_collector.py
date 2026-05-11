@@ -4,6 +4,8 @@ import os
 import time
 from datetime import datetime
 
+from utils.sector_classifier import classify_sector
+
 
 UNIVERSE_FILE = "data/raw/nse_stock_universe.csv"
 
@@ -53,7 +55,12 @@ def fetch_fundamentals(symbol):
 
             "CURRENT_PRICE": info.get("currentPrice"),
 
-            "SECTOR": info.get("sector"),
+            "SECTOR": classify_sector(
+                info.get("sector"),
+                info.get("industry")
+            ),
+
+            "RAW_SECTOR": info.get("sector"),
 
             "INDUSTRY": info.get("industry"),
 
@@ -66,7 +73,9 @@ def fetch_fundamentals(symbol):
 
     except Exception as e:
 
-        print(f"Error fetching {symbol}: {e}")
+        print(
+            f"Error fetching {symbol}: {e}"
+        )
 
         return None
 
@@ -80,7 +89,9 @@ def main():
     # Initial stability limit
     stocks = stocks[:200]
 
-    print(f"\nTotal Stocks Selected: {len(stocks)}")
+    print(
+        f"\nTotal Stocks Selected: {len(stocks)}"
+    )
 
     all_data = []
 
@@ -88,7 +99,9 @@ def main():
 
     failed = 0
 
-    print("\nFetching institutional fundamentals...\n")
+    print(
+        "\nFetching institutional fundamentals...\n"
+    )
 
     for index, stock_symbol in enumerate(stocks):
 
@@ -128,7 +141,9 @@ def main():
 
     print("\n===================================")
 
-    print("Institutional Data Collection Complete")
+    print(
+        "Institutional Data Collection Complete"
+    )
 
     print("===================================")
 
@@ -136,9 +151,19 @@ def main():
 
     print(f"Failed: {failed}")
 
-    print(f"Final Dataset Size: {len(df)}")
+    print(
+        f"Final Dataset Size: {len(df)}"
+    )
 
     print(f"\nSaved to: {OUTPUT_FILE}")
+
+    print("\nSector Distribution:\n")
+
+    print(
+        df["SECTOR"]
+        .value_counts()
+        .head(20)
+    )
 
     print("\nSample Data:\n")
 
