@@ -1,416 +1,225 @@
-import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import os
 
 
-st.set_page_config(
-    page_title="Institutional Fundamental Analysis",
-    layout="wide"
-)
+INPUT_FILE = "data/exports/valuation_scores.csv"
+
+OUTPUT_FILE = "data/exports/factor_scores.csv"
 
 
-# =====================================================
-# REQUIRED FILE CHECK
-# =====================================================
+def percentile_score(series, ascending=True):
 
-required_files = [
-
-    "data/exports/final_rankings.csv",
-
-    "data/exports/compounders.csv",
-
-    "data/exports/institutional_buying.csv",
-
-    "data/exports/sector_rotation.csv"
-]
+    return series.rank(
+        pct=True,
+        ascending=ascending
+    ) * 100
 
 
-missing_files = [
+def build_factor_model(df):
 
-    file for file in required_files
-    if not os.path.exists(file)
-]
+    print("Building institutional factor model...")
 
 
-if missing_files:
+    # =====================================
+    # QUALITY FACTOR
+    # =====================================
 
-    st.error(
-        "Required institutional datasets are missing."
+    df["ROE_FACTOR"] = percentile_score(
+        df["ROE"].fillna(0),
+        ascending=True
     )
 
-    st.info(
-        "Run the institutional data pipeline first."
+    df["MARGIN_FACTOR"] = percentile_score(
+        df["OPERATING_MARGIN"].fillna(0),
+        ascending=True
     )
 
-    st.code("""
-python collectors/screener_collector.py
-python preprocessing/cleaner.py
-python scoring/growth_score.py
-python scoring/quality_score.py
-python scoring/ownership_score.py
-python scoring/valuation_score.py
-python scoring/final_ranker.py
-python analytics/compounder_detector.py
-python analytics/institutional_buying.py
-python analytics/sector_rotation.py
-    """)
-
-    st.stop()
-
-
-# =====================================================
-# LOAD DATA
-# =====================================================
-
-@st.cache_data
-def load_data():
-
-    rankings = pd.read_csv(
-        "data/exports/final_rankings.csv"
-    )
-
-    compounders = pd.read_csv(
-        "data/exports/compounders.csv"
-    )
-
-    institutional = pd.read_csv(
-        "data/exports/institutional_buying.csv"
-    )
-
-    sectors = pd.read_csv(
-        "data/exports/sector_rotation.csv"
-    )
-
-    return rankings, compounders, institutional, sectors
-
-
-rankings, compounders, institutional, sectors = load_data()
-
-
-# =====================================================
-# SIDEBAR FILTERS
-# =====================================================
-
-st.sidebar.title("Filters")
-
-selected_sector = st.sidebar.selectbox(
-    "Sector",
-    ["ALL"] + sorted(
-        rankings["SECTOR"].dropna().unique().tolist()
-    )
-)
-
-selected_rating = st.sidebar.selectbox(
-    "Rating",
-    ["ALL"] + sorted(
-        rankings["RATING"].dropna().unique().tolist()
-    )
-)
-
-
-# =====================================================
-# FILTER DATA
-# =====================================================
-
-filtered_rankings = rankings.copy()
-
-if selected_sector != "ALL":
-
-    filtered_rankings = filtered_rankings[
-        filtered_rankings["SECTOR"] == selected_sector
-    ]
-
-if selected_rating != "ALL":
-
-    filtered_rankings = filtered_rankings[
-        filtered_rankings["RATING"] == selected_rating
-    ]
-
-
-# =====================================================
-# HEADER
-# =====================================================
-
-st.title(
-    "🇮🇳 Institutional Fundamental Analysis Platform"
-)
-
-st.markdown(
-    "Professional Indian Equity Institutional Analytics System"
-)
-
-
-# =====================================================
-# METRICS
-# =====================================================
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric(
-    "Stocks",
-    len(filtered_rankings)
-)
-
-col2.metric(
-    "Average Score",
-    round(filtered_rankings["FINAL_SCORE"].mean(), 2)
-)
-
-col3.metric(
-    "Top Sector",
-    sectors.iloc[0]["SECTOR"]
-)
-
-col4.metric(
-    "Best Rating",
-    filtered_rankings["RATING"].mode()[0]
-)
-
-
-# =====================================================
-# TABS
-# =====================================================
-
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🏆 Rankings",
-    "💎 Compounders",
-    "🏦 Institutional Buying",
-    "📊 Sector Analytics"
-])
-
-
-# =====================================================
-# TAB 1 — RANKINGS
-# =====================================================
-
-with tab1:
-
-    st.subheader("Institutional Rankings")
-
-    ranking_columns = [
-
-        "FINAL_RANK",
-
-        "SYMBOL",
-
-        "SECTOR",
-
-        "FINAL_SCORE",
-
-        "RATING",
-
-        "GROWTH_SCORE",
-
-        "QUALITY_SCORE",
-
-        "OWNERSHIP_SCORE",
-
-        "VALUATION_SCORE"
-    ]
-
-    available_columns = [
-        col for col in ranking_columns
-        if col in filtered_rankings.columns
-    ]
-
-    st.dataframe(
-        filtered_rankings[available_columns],
-        use_container_width=True
-    )
-
-    top_rankings = filtered_rankings.sort_values(
-        by="FINAL_SCORE",
+    df["DEBT_FACTOR"] = percentile_score(
+        df["DEBT_TO_EQUITY"].fillna(0),
         ascending=False
-    ).head(10)
-
-    fig1 = px.bar(
-        top_rankings,
-        x="SYMBOL",
-        y="FINAL_SCORE",
-        color="RATING",
-        title="Top Institutional Picks"
-    )
-
-    st.plotly_chart(
-        fig1,
-        use_container_width=True
     )
 
 
-# =====================================================
-# TAB 2 — COMPOUNDERS
-# =====================================================
+    df["QUALITY_FACTOR"] = (
 
-with tab2:
+        df["ROE_FACTOR"] * 0.4 +
 
-    st.subheader("Long-Term Compounders")
+        df["MARGIN_FACTOR"] * 0.4 +
 
-    compounder_columns = [
-
-        "COMPOUNDER_RANK",
-
-        "SYMBOL",
-
-        "SECTOR",
-
-        "ROE",
-
-        "REVENUE_GROWTH",
-
-        "EARNINGS_GROWTH",
-
-        "FINAL_SCORE",
-
-        "RATING"
-    ]
-
-    available_compounder_columns = [
-        col for col in compounder_columns
-        if col in compounders.columns
-    ]
-
-    st.dataframe(
-        compounders[
-            available_compounder_columns
-        ],
-        use_container_width=True
+        df["DEBT_FACTOR"] * 0.2
     )
 
-    if "ROE" in compounders.columns:
 
-        fig2 = px.scatter(
-            compounders,
-            x="ROE",
-            y="FINAL_SCORE",
-            color="SECTOR",
-            size="FINAL_SCORE",
-            hover_data=["SYMBOL"],
-            title="Compounder Quality Map"
-        )
+    # =====================================
+    # GROWTH FACTOR
+    # =====================================
 
-        st.plotly_chart(
-            fig2,
-            use_container_width=True
-        )
-
-
-# =====================================================
-# TAB 3 — INSTITUTIONAL BUYING
-# =====================================================
-
-with tab3:
-
-    st.subheader("Institutional Accumulation")
-
-    institutional_columns = [
-
-        "INSTITUTIONAL_RANK",
-
-        "SYMBOL",
-
-        "SECTOR",
-
-        "PROMOTER_HOLDING",
-
-        "FII_HOLDING",
-
-        "DII_HOLDING",
-
-        "OWNERSHIP_SCORE",
-
-        "FINAL_SCORE",
-
-        "RATING"
-    ]
-
-    available_institutional_columns = [
-        col for col in institutional_columns
-        if col in institutional.columns
-    ]
-
-    st.dataframe(
-        institutional[
-            available_institutional_columns
-        ],
-        use_container_width=True
+    df["REVENUE_FACTOR"] = percentile_score(
+        df["REVENUE_GROWTH"].fillna(0),
+        ascending=True
     )
 
-    if "OWNERSHIP_SCORE" in institutional.columns:
-
-        top_inst = institutional.sort_values(
-            by="OWNERSHIP_SCORE",
-            ascending=False
-        ).head(10)
-
-        fig3 = px.bar(
-            top_inst,
-            x="SYMBOL",
-            y="OWNERSHIP_SCORE",
-            color="SECTOR",
-            title="Smart Money Accumulation"
-        )
-
-        st.plotly_chart(
-            fig3,
-            use_container_width=True
-        )
-
-
-# =====================================================
-# TAB 4 — SECTOR ANALYTICS
-# =====================================================
-
-with tab4:
-
-    st.subheader("Sector Rotation Analysis")
-
-    st.dataframe(
-        sectors,
-        use_container_width=True
+    df["EARNINGS_FACTOR"] = percentile_score(
+        df["EARNINGS_GROWTH"].fillna(0),
+        ascending=True
     )
 
-    if "SECTOR_STATUS" in sectors.columns:
 
-        fig4 = px.bar(
-            sectors,
-            x="SECTOR",
-            y="FINAL_SCORE",
-            color="SECTOR_STATUS",
-            title="Sector Leadership Rankings"
-        )
+    df["GROWTH_FACTOR"] = (
 
-        st.plotly_chart(
-            fig4,
-            use_container_width=True
-        )
+        df["REVENUE_FACTOR"] * 0.5 +
+
+        df["EARNINGS_FACTOR"] * 0.5
+    )
 
 
-# =====================================================
-# SCORE DISTRIBUTION
-# =====================================================
+    # =====================================
+    # VALUE FACTOR
+    # =====================================
 
-st.subheader("📈 Institutional Score Distribution")
+    df["PE_FACTOR"] = percentile_score(
+        df["PE_RATIO"].replace(0, np.nan),
+        ascending=False
+    )
 
-fig5 = px.histogram(
-    filtered_rankings,
-    x="FINAL_SCORE",
-    nbins=20,
-    title="Final Institutional Score Distribution"
-)
-
-st.plotly_chart(
-    fig5,
-    use_container_width=True
-)
+    df["PB_FACTOR"] = percentile_score(
+        df["PRICE_TO_BOOK"].replace(0, np.nan),
+        ascending=False
+    )
 
 
-# =====================================================
-# FOOTER
-# =====================================================
+    df["VALUE_FACTOR"] = (
 
-st.markdown("---")
+        df["PE_FACTOR"] * 0.5 +
 
-st.caption(
-    "Institutional Fundamental Analysis Platform | India"
-)
+        df["PB_FACTOR"] * 0.5
+    )
+
+
+    # =====================================
+    # OWNERSHIP FACTOR
+    # =====================================
+
+    df["PROMOTER_FACTOR"] = percentile_score(
+        df["PROMOTER_HOLDING"].fillna(0),
+        ascending=True
+    )
+
+    df["FII_FACTOR"] = percentile_score(
+        df["FII_HOLDING"].fillna(0),
+        ascending=True
+    )
+
+
+    df["OWNERSHIP_FACTOR"] = (
+
+        df["PROMOTER_FACTOR"] * 0.5 +
+
+        df["FII_FACTOR"] * 0.5
+    )
+
+
+    # =====================================
+    # FINAL FACTOR SCORE
+    # =====================================
+
+    df["FACTOR_SCORE"] = (
+
+        df["QUALITY_FACTOR"] * 0.30 +
+
+        df["GROWTH_FACTOR"] * 0.30 +
+
+        df["VALUE_FACTOR"] * 0.20 +
+
+        df["OWNERSHIP_FACTOR"] * 0.20
+    )
+
+
+    return df
+
+
+def rank_factor_stocks(df):
+
+    df = df.sort_values(
+        by="FACTOR_SCORE",
+        ascending=False
+    )
+
+    df["FACTOR_RANK"] = range(
+        1,
+        len(df) + 1
+    )
+
+    return df
+
+
+def classify_factor_quality(score):
+
+    if score >= 80:
+
+        return "ELITE"
+
+    elif score >= 65:
+
+        return "STRONG"
+
+    elif score >= 50:
+
+        return "AVERAGE"
+
+    else:
+
+        return "WEAK"
+
+
+def main():
+
+    print("Loading valuation dataset...")
+
+    df = pd.read_csv(INPUT_FILE)
+
+    df = build_factor_model(df)
+
+    df = rank_factor_stocks(df)
+
+    df["FACTOR_GRADE"] = df[
+        "FACTOR_SCORE"
+    ].apply(classify_factor_quality)
+
+    os.makedirs(
+        "data/exports",
+        exist_ok=True
+    )
+
+    df.to_csv(
+        OUTPUT_FILE,
+        index=False
+    )
+
+    print("\nTop Institutional Factor Stocks:\n")
+
+    print(
+        df[
+            [
+                "FACTOR_RANK",
+
+                "SYMBOL",
+
+                "SECTOR",
+
+                "MARKET_CAP_CATEGORY",
+
+                "FACTOR_SCORE",
+
+                "FACTOR_GRADE"
+            ]
+        ].head(20)
+    )
+
+    print(f"\nSaved to: {OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+
+    main()
