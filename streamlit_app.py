@@ -11,96 +11,7 @@ st.set_page_config(
 
 
 # =====================================================
-# CREATE DEMO DATA IF FILES DON'T EXIST
-# =====================================================
-
-def create_demo_data():
-
-    os.makedirs("data/exports", exist_ok=True)
-
-    demo_df = pd.DataFrame({
-
-        "FINAL_RANK": [1, 2, 3, 4, 5],
-
-        "SYMBOL": [
-            "TCS",
-            "HAL",
-            "HDFCBANK",
-            "INFY",
-            "BEL"
-        ],
-
-        "SECTOR": [
-            "IT",
-            "DEFENCE",
-            "BANKING",
-            "IT",
-            "DEFENCE"
-        ],
-
-        "GROWTH_SCORE": [85, 80, 75, 82, 78],
-
-        "QUALITY_SCORE": [90, 88, 86, 84, 83],
-
-        "OWNERSHIP_SCORE": [80, 79, 85, 76, 74],
-
-        "FINAL_SCORE": [86, 82, 81, 80, 78],
-
-        "RATING": [
-            "STRONG BUY",
-            "STRONG BUY",
-            "BUY",
-            "BUY",
-            "BUY"
-        ],
-
-        "ROE": [0.42, 0.31, 0.18, 0.29, 0.24],
-
-        "REVENUE_GROWTH": [0.18, 0.22, 0.14, 0.17, 0.19],
-
-        "EARNINGS_GROWTH": [0.20, 0.24, 0.15, 0.18, 0.21]
-    })
-
-    sector_df = pd.DataFrame({
-
-        "SECTOR": [
-            "IT",
-            "DEFENCE",
-            "BANKING"
-        ],
-
-        "FINAL_SCORE": [82, 80, 75],
-
-        "SECTOR_STATUS": [
-            "LEADING",
-            "LEADING",
-            "STRONG"
-        ]
-    })
-
-    demo_df.to_csv(
-        "data/exports/final_rankings.csv",
-        index=False
-    )
-
-    demo_df.to_csv(
-        "data/exports/compounders.csv",
-        index=False
-    )
-
-    demo_df.to_csv(
-        "data/exports/institutional_buying.csv",
-        index=False
-    )
-
-    sector_df.to_csv(
-        "data/exports/sector_rotation.csv",
-        index=False
-    )
-
-
-# =====================================================
-# CHECK FILES
+# REQUIRED FILE CHECK
 # =====================================================
 
 required_files = [
@@ -115,14 +26,37 @@ required_files = [
 ]
 
 
-missing = any(
-    not os.path.exists(file)
-    for file in required_files
-)
+missing_files = [
 
-if missing:
+    file for file in required_files
+    if not os.path.exists(file)
+]
 
-    create_demo_data()
+
+if missing_files:
+
+    st.error(
+        "Required institutional datasets are missing."
+    )
+
+    st.info(
+        "Run the institutional data pipeline first."
+    )
+
+    st.code("""
+python collectors/screener_collector.py
+python preprocessing/cleaner.py
+python scoring/growth_score.py
+python scoring/quality_score.py
+python scoring/ownership_score.py
+python scoring/valuation_score.py
+python scoring/final_ranker.py
+python analytics/compounder_detector.py
+python analytics/institutional_buying.py
+python analytics/sector_rotation.py
+    """)
+
+    st.stop()
 
 
 # =====================================================
@@ -155,21 +89,10 @@ rankings, compounders, institutional, sectors = load_data()
 
 
 # =====================================================
-# HEADER
+# SIDEBAR FILTERS
 # =====================================================
 
-st.title("🇮🇳 Institutional Fundamental Analysis Platform")
-
-st.markdown("""
-Professional Indian Equity Institutional Analytics System
-""")
-
-
-# =====================================================
-# SIDEBAR
-# =====================================================
-
-st.sidebar.header("Filters")
+st.sidebar.title("Filters")
 
 selected_sector = st.sidebar.selectbox(
     "Sector",
@@ -187,7 +110,7 @@ selected_rating = st.sidebar.selectbox(
 
 
 # =====================================================
-# FILTERS
+# FILTER DATA
 # =====================================================
 
 filtered_rankings = rankings.copy()
@@ -203,6 +126,19 @@ if selected_rating != "ALL":
     filtered_rankings = filtered_rankings[
         filtered_rankings["RATING"] == selected_rating
     ]
+
+
+# =====================================================
+# HEADER
+# =====================================================
+
+st.title(
+    "🇮🇳 Institutional Fundamental Analysis Platform"
+)
+
+st.markdown(
+    "Professional Indian Equity Institutional Analytics System"
+)
 
 
 # =====================================================
@@ -245,20 +181,51 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 
 # =====================================================
-# TAB 1
+# TAB 1 — RANKINGS
 # =====================================================
 
 with tab1:
 
     st.subheader("Institutional Rankings")
 
+    ranking_columns = [
+
+        "FINAL_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "FINAL_SCORE",
+
+        "RATING",
+
+        "GROWTH_SCORE",
+
+        "QUALITY_SCORE",
+
+        "OWNERSHIP_SCORE",
+
+        "VALUATION_SCORE"
+    ]
+
+    available_columns = [
+        col for col in ranking_columns
+        if col in filtered_rankings.columns
+    ]
+
     st.dataframe(
-        filtered_rankings,
+        filtered_rankings[available_columns],
         use_container_width=True
     )
 
-    fig = px.bar(
-        filtered_rankings,
+    top_rankings = filtered_rankings.sort_values(
+        by="FINAL_SCORE",
+        ascending=False
+    ).head(10)
+
+    fig1 = px.bar(
+        top_rankings,
         x="SYMBOL",
         y="FINAL_SCORE",
         color="RATING",
@@ -266,64 +233,176 @@ with tab1:
     )
 
     st.plotly_chart(
-        fig,
+        fig1,
         use_container_width=True
     )
 
 
 # =====================================================
-# TAB 2
+# TAB 2 — COMPOUNDERS
 # =====================================================
 
 with tab2:
 
-    st.subheader("Compounders")
+    st.subheader("Long-Term Compounders")
+
+    compounder_columns = [
+
+        "COMPOUNDER_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "ROE",
+
+        "REVENUE_GROWTH",
+
+        "EARNINGS_GROWTH",
+
+        "FINAL_SCORE",
+
+        "RATING"
+    ]
+
+    available_compounder_columns = [
+        col for col in compounder_columns
+        if col in compounders.columns
+    ]
 
     st.dataframe(
-        compounders,
+        compounders[
+            available_compounder_columns
+        ],
         use_container_width=True
     )
 
+    if "ROE" in compounders.columns:
+
+        fig2 = px.scatter(
+            compounders,
+            x="ROE",
+            y="FINAL_SCORE",
+            color="SECTOR",
+            size="FINAL_SCORE",
+            hover_data=["SYMBOL"],
+            title="Compounder Quality Map"
+        )
+
+        st.plotly_chart(
+            fig2,
+            use_container_width=True
+        )
+
 
 # =====================================================
-# TAB 3
+# TAB 3 — INSTITUTIONAL BUYING
 # =====================================================
 
 with tab3:
 
-    st.subheader("Institutional Buying")
+    st.subheader("Institutional Accumulation")
+
+    institutional_columns = [
+
+        "INSTITUTIONAL_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "PROMOTER_HOLDING",
+
+        "FII_HOLDING",
+
+        "DII_HOLDING",
+
+        "OWNERSHIP_SCORE",
+
+        "FINAL_SCORE",
+
+        "RATING"
+    ]
+
+    available_institutional_columns = [
+        col for col in institutional_columns
+        if col in institutional.columns
+    ]
 
     st.dataframe(
-        institutional,
+        institutional[
+            available_institutional_columns
+        ],
         use_container_width=True
     )
 
+    if "OWNERSHIP_SCORE" in institutional.columns:
+
+        top_inst = institutional.sort_values(
+            by="OWNERSHIP_SCORE",
+            ascending=False
+        ).head(10)
+
+        fig3 = px.bar(
+            top_inst,
+            x="SYMBOL",
+            y="OWNERSHIP_SCORE",
+            color="SECTOR",
+            title="Smart Money Accumulation"
+        )
+
+        st.plotly_chart(
+            fig3,
+            use_container_width=True
+        )
+
 
 # =====================================================
-# TAB 4
+# TAB 4 — SECTOR ANALYTICS
 # =====================================================
 
 with tab4:
 
-    st.subheader("Sector Rotation")
+    st.subheader("Sector Rotation Analysis")
 
     st.dataframe(
         sectors,
         use_container_width=True
     )
 
-    fig2 = px.bar(
-        sectors,
-        x="SECTOR",
-        y="FINAL_SCORE",
-        color="SECTOR_STATUS",
-        title="Sector Leadership"
-    )
+    if "SECTOR_STATUS" in sectors.columns:
 
-    st.plotly_chart(
-        fig2,
-        use_container_width=True
-    )
+        fig4 = px.bar(
+            sectors,
+            x="SECTOR",
+            y="FINAL_SCORE",
+            color="SECTOR_STATUS",
+            title="Sector Leadership Rankings"
+        )
+
+        st.plotly_chart(
+            fig4,
+            use_container_width=True
+        )
+
+
+# =====================================================
+# SCORE DISTRIBUTION
+# =====================================================
+
+st.subheader("📈 Institutional Score Distribution")
+
+fig5 = px.histogram(
+    filtered_rankings,
+    x="FINAL_SCORE",
+    nbins=20,
+    title="Final Institutional Score Distribution"
+)
+
+st.plotly_chart(
+    fig5,
+    use_container_width=True
+)
 
 
 # =====================================================
