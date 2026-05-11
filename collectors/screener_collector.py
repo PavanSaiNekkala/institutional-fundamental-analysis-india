@@ -1,21 +1,24 @@
 import pandas as pd
 import yfinance as yf
 import os
+import time
 from datetime import datetime
 
 
-STOCKS = [
-    "RELIANCE.NS",
-    "TCS.NS",
-    "INFY.NS",
-    "HDFCBANK.NS",
-    "ICICIBANK.NS",
-    "SBIN.NS",
-    "HAL.NS",
-    "BEL.NS",
-    "NTPC.NS",
-    "POWERGRID.NS"
-]
+UNIVERSE_FILE = "data/raw/nse_stock_universe.csv"
+
+OUTPUT_FILE = "data/financials/fundamentals.csv"
+
+
+def load_stock_universe():
+
+    df = pd.read_csv(
+        UNIVERSE_FILE
+    )
+
+    stocks = df["SYMBOL"].tolist()
+
+    return stocks
 
 
 def fetch_fundamentals(symbol):
@@ -27,20 +30,36 @@ def fetch_fundamentals(symbol):
         info = stock.info
 
         data = {
+
             "SYMBOL": symbol.replace(".NS", ""),
+
             "MARKET_CAP": info.get("marketCap"),
+
             "PE_RATIO": info.get("trailingPE"),
+
             "PRICE_TO_BOOK": info.get("priceToBook"),
+
             "ROE": info.get("returnOnEquity"),
+
             "DEBT_TO_EQUITY": info.get("debtToEquity"),
+
             "OPERATING_MARGIN": info.get("operatingMargins"),
+
             "PROFIT_MARGIN": info.get("profitMargins"),
+
             "REVENUE_GROWTH": info.get("revenueGrowth"),
+
             "EARNINGS_GROWTH": info.get("earningsGrowth"),
+
             "CURRENT_PRICE": info.get("currentPrice"),
+
             "SECTOR": info.get("sector"),
+
             "INDUSTRY": info.get("industry"),
-            "FETCH_DATE": datetime.now().strftime("%Y-%m-%d")
+
+            "FETCH_DATE": datetime.now().strftime(
+                "%Y-%m-%d"
+            )
         }
 
         return data
@@ -54,33 +73,78 @@ def fetch_fundamentals(symbol):
 
 def main():
 
+    print("Loading NSE stock universe...")
+
+    stocks = load_stock_universe()
+
+    # Initial stability limit
+    stocks = stocks[:200]
+
+    print(f"\nTotal Stocks Selected: {len(stocks)}")
+
     all_data = []
 
-    print("Fetching institutional fundamentals...\n")
+    successful = 0
 
-    for stock in STOCKS:
+    failed = 0
 
-        print(f"Fetching: {stock}")
+    print("\nFetching institutional fundamentals...\n")
 
-        data = fetch_fundamentals(stock)
+    for index, stock_symbol in enumerate(stocks):
+
+        print(
+            f"[{index + 1}/{len(stocks)}] "
+            f"Fetching: {stock_symbol}"
+        )
+
+        data = fetch_fundamentals(
+            stock_symbol
+        )
 
         if data:
+
             all_data.append(data)
+
+            successful += 1
+
+        else:
+
+            failed += 1
+
+        # Prevent rate limiting
+        time.sleep(0.5)
 
     df = pd.DataFrame(all_data)
 
-    os.makedirs("data/financials", exist_ok=True)
+    os.makedirs(
+        "data/financials",
+        exist_ok=True
+    )
 
-    output_path = "data/financials/fundamentals.csv"
+    df.to_csv(
+        OUTPUT_FILE,
+        index=False
+    )
 
-    df.to_csv(output_path, index=False)
+    print("\n===================================")
 
-    print("\nFundamentals collected successfully.")
+    print("Institutional Data Collection Complete")
+
+    print("===================================")
+
+    print(f"Successful: {successful}")
+
+    print(f"Failed: {failed}")
+
+    print(f"Final Dataset Size: {len(df)}")
+
+    print(f"\nSaved to: {OUTPUT_FILE}")
+
+    print("\nSample Data:\n")
 
     print(df.head())
 
-    print(f"\nSaved to: {output_path}")
-
 
 if __name__ == "__main__":
+
     main()
