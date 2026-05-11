@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 
-INPUT_FILE = "data/exports/valuation_scores.csv"
+INPUT_FILE = "data/exports/factor_scores.csv"
 
 OUTPUT_FILE = "data/exports/final_rankings.csv"
 
@@ -11,15 +11,24 @@ def calculate_final_score(df):
 
     print("Calculating final institutional rankings...")
 
+    if "RISK_SCORE" not in df.columns:
+
+        df["RISK_SCORE"] = 0
+
+
     df["FINAL_SCORE"] = (
 
-        df["GROWTH_SCORE"] * 0.30 +
+        df["QUALITY_FACTOR"] * 0.25 +
 
-        df["QUALITY_SCORE"] * 0.30 +
+        df["GROWTH_FACTOR"] * 0.25 +
 
-        df["OWNERSHIP_SCORE"] * 0.20 +
+        df["VALUE_FACTOR"] * 0.15 +
 
-        df["VALUATION_SCORE"] * 0.20
+        df["OWNERSHIP_FACTOR"] * 0.15 +
+
+        df["FACTOR_SCORE"] * 0.10 +
+
+        df["RISK_SCORE"] * 0.10
     )
 
     return df
@@ -27,16 +36,20 @@ def calculate_final_score(df):
 
 def assign_rating(score):
 
-    if score >= 75:
+    if score >= 80:
+
         return "STRONG BUY"
 
-    elif score >= 60:
+    elif score >= 65:
+
         return "BUY"
 
-    elif score >= 45:
+    elif score >= 50:
+
         return "WATCH"
 
     else:
+
         return "AVOID"
 
 
@@ -69,11 +82,21 @@ def select_output_columns(df):
 
         "SECTOR",
 
+        "MARKET_CAP",
+
+        "MARKET_CAP_CATEGORY",
+
         "PE_RATIO",
 
         "PRICE_TO_BOOK",
 
         "ROE",
+
+        "DEBT_TO_EQUITY",
+
+        "OPERATING_MARGIN",
+
+        "PROFIT_MARGIN",
 
         "REVENUE_GROWTH",
 
@@ -85,6 +108,8 @@ def select_output_columns(df):
 
         "DII_HOLDING",
 
+        "PLEDGE_PERCENT",
+
         "GROWTH_SCORE",
 
         "QUALITY_SCORE",
@@ -92,6 +117,18 @@ def select_output_columns(df):
         "OWNERSHIP_SCORE",
 
         "VALUATION_SCORE",
+
+        "QUALITY_FACTOR",
+
+        "GROWTH_FACTOR",
+
+        "VALUE_FACTOR",
+
+        "OWNERSHIP_FACTOR",
+
+        "FACTOR_SCORE",
+
+        "RISK_SCORE",
 
         "FINAL_SCORE",
 
@@ -108,7 +145,7 @@ def select_output_columns(df):
 
 def main():
 
-    print("Loading valuation-ranked dataset...")
+    print("Loading institutional factor dataset...")
 
     df = pd.read_csv(INPUT_FILE)
 
@@ -128,15 +165,20 @@ def main():
         index=False
     )
 
-    print("\nTop Institutional Picks:\n")
+    print("\n===================================")
+
+    print(
+        "Final Institutional Rankings Generated"
+    )
+
+    print("===================================\n")
 
     print(
         final_df.head(20)
     )
 
     print(
-        f"\nFinal rankings saved to: "
-        f"{OUTPUT_FILE}"
+        f"\nSaved to: {OUTPUT_FILE}"
     )
 
 

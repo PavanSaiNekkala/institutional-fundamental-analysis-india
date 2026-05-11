@@ -2,26 +2,26 @@ import pandas as pd
 import os
 
 
-INPUT_FILE = "data/exports/risk_scores.csv"
+INPUT_FILE = "data/exports/final_rankings.csv"
 
 OUTPUT_FILE = "data/exports/ai_research_reports.csv"
 
 
 def generate_research_summary(row):
 
-    symbol = row["SYMBOL"]
+    symbol = row.get("SYMBOL", "UNKNOWN")
 
-    sector = row["SECTOR"]
+    sector = row.get("SECTOR", "UNKNOWN")
 
-    rating = row["RATING"]
+    rating = row.get("RATING", "UNAVAILABLE")
 
     factor_score = round(
-        row["FACTOR_SCORE"],
+        row.get("FACTOR_SCORE", 0),
         2
     )
 
     final_score = round(
-        row["FINAL_SCORE"],
+        row.get("FINAL_SCORE", 0),
         2
     )
 
@@ -40,23 +40,28 @@ def generate_research_summary(row):
         2
     )
 
+    market_cap = row.get(
+        "MARKET_CAP_CATEGORY",
+        "UNKNOWN"
+    )
+
 
     # =====================================
     # AI COMMENTARY
     # =====================================
 
     summary = f"""
-{symbol} operates in the {sector} sector and currently holds a {rating} institutional rating.
+{symbol} operates in the {sector} sector and is currently classified as a {market_cap} company.
 
-The company has a factor score of {factor_score} and a final institutional score of {final_score}.
+The stock currently holds a {rating} institutional rating with a factor score of {factor_score} and a final institutional score of {final_score}.
 
-Business quality remains strong with ROE at {roe}, while revenue growth stands at {revenue_growth}.
+Business quality metrics remain healthy with Return on Equity (ROE) at {roe}, while revenue growth stands at {revenue_growth}.
 
-Promoter holding is currently {promoter}%, indicating ownership confidence.
+Promoter holding is currently {promoter}%, reflecting institutional and management ownership confidence.
 
-The stock demonstrates characteristics associated with institutional-quality businesses including scalable operations, factor strength, and sector positioning.
+The company demonstrates characteristics commonly associated with institutional-quality businesses including scalable operations, sector leadership potential, and factor strength.
 
-Overall institutional outlook: {rating}.
+Overall institutional outlook for {symbol}: {rating}.
 """
 
     return summary.strip()
@@ -78,7 +83,9 @@ def generate_ai_reports(df):
 
 def main():
 
-    print("Loading institutional risk dataset...")
+    print(
+        "Loading institutional rankings dataset..."
+    )
 
     df = pd.read_csv(INPUT_FILE)
 
@@ -94,7 +101,13 @@ def main():
         index=False
     )
 
-    print("\nAI Research Reports Generated\n")
+    print("\n===================================")
+
+    print(
+        "AI Institutional Research Reports Generated"
+    )
+
+    print("===================================\n")
 
     print(
         df[
@@ -108,7 +121,9 @@ def main():
         ].head(5)
     )
 
-    print(f"\nSaved to: {OUTPUT_FILE}")
+    print(
+        f"\nSaved to: {OUTPUT_FILE}"
+    )
 
 
 if __name__ == "__main__":
