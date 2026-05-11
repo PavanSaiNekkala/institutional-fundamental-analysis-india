@@ -1,225 +1,637 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
+import plotly.express as px
 import os
 
 
-INPUT_FILE = "data/exports/valuation_scores.csv"
-
-OUTPUT_FILE = "data/exports/factor_scores.csv"
-
-
-def percentile_score(series, ascending=True):
-
-    return series.rank(
-        pct=True,
-        ascending=ascending
-    ) * 100
+st.set_page_config(
+    page_title="Institutional Fundamental Analysis",
+    layout="wide"
+)
 
 
-def build_factor_model(df):
+# =====================================================
+# REQUIRED FILE CHECK
+# =====================================================
 
-    print("Building institutional factor model...")
+required_files = [
+
+    "data/exports/final_rankings.csv",
+
+    "data/exports/compounders.csv",
+
+    "data/exports/institutional_buying.csv",
+
+    "data/exports/sector_rotation.csv",
+
+    "data/exports/factor_scores.csv"
+]
 
 
-    # =====================================
-    # QUALITY FACTOR
-    # =====================================
+missing_files = [
 
-    df["ROE_FACTOR"] = percentile_score(
-        df["ROE"].fillna(0),
-        ascending=True
+    file for file in required_files
+    if not os.path.exists(file)
+]
+
+
+if missing_files:
+
+    st.error(
+        "Required institutional datasets are missing."
     )
 
-    df["MARGIN_FACTOR"] = percentile_score(
-        df["OPERATING_MARGIN"].fillna(0),
-        ascending=True
+    st.info(
+        "Run the institutional data pipeline first."
     )
 
-    df["DEBT_FACTOR"] = percentile_score(
-        df["DEBT_TO_EQUITY"].fillna(0),
+    st.code("""
+python collectors/nse_collector.py
+python collectors/screener_collector.py
+python preprocessing/cleaner.py
+python scoring/growth_score.py
+python scoring/quality_score.py
+python scoring/ownership_score.py
+python scoring/valuation_score.py
+python scoring/factor_model.py
+python scoring/final_ranker.py
+python analytics/compounder_detector.py
+python analytics/institutional_buying.py
+python analytics/sector_rotation.py
+    """)
+
+    st.stop()
+
+
+# =====================================================
+# LOAD DATA
+# =====================================================
+
+@st.cache_data
+def load_data():
+
+    rankings = pd.read_csv(
+        "data/exports/final_rankings.csv"
+    )
+
+    compounders = pd.read_csv(
+        "data/exports/compounders.csv"
+    )
+
+    institutional = pd.read_csv(
+        "data/exports/institutional_buying.csv"
+    )
+
+    sectors = pd.read_csv(
+        "data/exports/sector_rotation.csv"
+    )
+
+    factor_scores = pd.read_csv(
+        "data/exports/factor_scores.csv"
+    )
+
+    return (
+        rankings,
+        compounders,
+        institutional,
+        sectors,
+        factor_scores
+    )
+
+
+(
+    rankings,
+    compounders,
+    institutional,
+    sectors,
+    factor_scores
+) = load_data()
+
+
+# =====================================================
+# SIDEBAR FILTERS
+# =====================================================
+
+st.sidebar.title("Institutional Filters")
+
+selected_sector = st.sidebar.selectbox(
+    "Sector",
+    ["ALL"] + sorted(
+        rankings["SECTOR"].dropna().unique().tolist()
+    )
+)
+
+selected_rating = st.sidebar.selectbox(
+    "Rating",
+    ["ALL"] + sorted(
+        rankings["RATING"].dropna().unique().tolist()
+    )
+)
+
+selected_market_cap = st.sidebar.selectbox(
+    "Market Cap",
+    ["ALL"] + sorted(
+        rankings[
+            "MARKET_CAP_CATEGORY"
+        ].dropna().unique().tolist()
+    )
+)
+
+
+# =====================================================
+# FILTER DATA
+# =====================================================
+
+filtered_rankings = rankings.copy()
+
+if selected_sector != "ALL":
+
+    filtered_rankings = filtered_rankings[
+        filtered_rankings["SECTOR"] == selected_sector
+    ]
+
+if selected_rating != "ALL":
+
+    filtered_rankings = filtered_rankings[
+        filtered_rankings["RATING"] == selected_rating
+    ]
+
+if selected_market_cap != "ALL":
+
+    filtered_rankings = filtered_rankings[
+        filtered_rankings[
+            "MARKET_CAP_CATEGORY"
+        ] == selected_market_cap
+    ]
+
+
+# =====================================================
+# HEADER
+# =====================================================
+
+st.title(
+    "🇮🇳 Institutional Fundamental Analysis Platform"
+)
+
+st.markdown(
+    """
+Professional Indian Equity Institutional Analytics System
+"""
+)
+
+
+# =====================================================
+# METRICS
+# =====================================================
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Stocks",
+    len(filtered_rankings)
+)
+
+col2.metric(
+    "Average Score",
+    round(
+        filtered_rankings[
+            "FINAL_SCORE"
+        ].mean(),
+        2
+    )
+)
+
+col3.metric(
+    "Top Sector",
+    sectors.iloc[0]["SECTOR"]
+)
+
+col4.metric(
+    "Top Rating",
+    filtered_rankings["RATING"].mode()[0]
+)
+
+
+# =====================================================
+# TABS
+# =====================================================
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+
+    "🏆 Rankings",
+
+    "💎 Compounders",
+
+    "🏦 Institutional Buying",
+
+    "📊 Sector Analytics",
+
+    "🔥 Heatmaps"
+])
+
+
+# =====================================================
+# TAB 1 — RANKINGS
+# =====================================================
+
+with tab1:
+
+    st.subheader(
+        "Institutional Rankings"
+    )
+
+    ranking_columns = [
+
+        "FINAL_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "MARKET_CAP_CATEGORY",
+
+        "FINAL_SCORE",
+
+        "RATING",
+
+        "GROWTH_SCORE",
+
+        "QUALITY_SCORE",
+
+        "OWNERSHIP_SCORE",
+
+        "VALUATION_SCORE"
+    ]
+
+    available_columns = [
+        col for col in ranking_columns
+        if col in filtered_rankings.columns
+    ]
+
+    st.dataframe(
+        filtered_rankings[
+            available_columns
+        ],
+        use_container_width=True
+    )
+
+    top_rankings = filtered_rankings.sort_values(
+        by="FINAL_SCORE",
         ascending=False
+    ).head(10)
+
+    fig1 = px.bar(
+        top_rankings,
+        x="SYMBOL",
+        y="FINAL_SCORE",
+        color="RATING",
+        title="Top Institutional Picks"
+    )
+
+    st.plotly_chart(
+        fig1,
+        use_container_width=True
     )
 
 
-    df["QUALITY_FACTOR"] = (
+# =====================================================
+# TAB 2 — COMPOUNDERS
+# =====================================================
 
-        df["ROE_FACTOR"] * 0.4 +
+with tab2:
 
-        df["MARGIN_FACTOR"] * 0.4 +
+    st.subheader(
+        "Long-Term Compounders"
+    )
 
-        df["DEBT_FACTOR"] * 0.2
+    compounder_columns = [
+
+        "COMPOUNDER_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "MARKET_CAP_CATEGORY",
+
+        "ROE",
+
+        "REVENUE_GROWTH",
+
+        "EARNINGS_GROWTH",
+
+        "FINAL_SCORE",
+
+        "RATING"
+    ]
+
+    available_compounder_columns = [
+        col for col in compounder_columns
+        if col in compounders.columns
+    ]
+
+    st.dataframe(
+        compounders[
+            available_compounder_columns
+        ],
+        use_container_width=True
+    )
+
+    if "ROE" in compounders.columns:
+
+        fig2 = px.scatter(
+            compounders,
+            x="ROE",
+            y="FINAL_SCORE",
+            color="SECTOR",
+            size="FINAL_SCORE",
+            hover_data=["SYMBOL"],
+            title="Compounder Quality Map"
+        )
+
+        st.plotly_chart(
+            fig2,
+            use_container_width=True
+        )
+
+
+# =====================================================
+# TAB 3 — INSTITUTIONAL BUYING
+# =====================================================
+
+with tab3:
+
+    st.subheader(
+        "Institutional Accumulation"
+    )
+
+    institutional_columns = [
+
+        "INSTITUTIONAL_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "MARKET_CAP_CATEGORY",
+
+        "PROMOTER_HOLDING",
+
+        "FII_HOLDING",
+
+        "DII_HOLDING",
+
+        "OWNERSHIP_SCORE",
+
+        "FINAL_SCORE",
+
+        "RATING"
+    ]
+
+    available_institutional_columns = [
+        col for col in institutional_columns
+        if col in institutional.columns
+    ]
+
+    st.dataframe(
+        institutional[
+            available_institutional_columns
+        ],
+        use_container_width=True
+    )
+
+    if "OWNERSHIP_SCORE" in institutional.columns:
+
+        top_inst = institutional.sort_values(
+            by="OWNERSHIP_SCORE",
+            ascending=False
+        ).head(10)
+
+        fig3 = px.bar(
+            top_inst,
+            x="SYMBOL",
+            y="OWNERSHIP_SCORE",
+            color="SECTOR",
+            title="Smart Money Accumulation"
+        )
+
+        st.plotly_chart(
+            fig3,
+            use_container_width=True
+        )
+
+
+# =====================================================
+# TAB 4 — SECTOR ANALYTICS
+# =====================================================
+
+with tab4:
+
+    st.subheader(
+        "Sector Rotation Analysis"
+    )
+
+    st.dataframe(
+        sectors,
+        use_container_width=True
+    )
+
+    if "SECTOR_STATUS" in sectors.columns:
+
+        fig4 = px.bar(
+            sectors,
+            x="SECTOR",
+            y="FINAL_SCORE",
+            color="SECTOR_STATUS",
+            title="Sector Leadership Rankings"
+        )
+
+        st.plotly_chart(
+            fig4,
+            use_container_width=True
+        )
+
+
+# =====================================================
+# TAB 5 — HEATMAPS
+# =====================================================
+
+with tab5:
+
+    st.subheader(
+        "Institutional Sector Heatmap"
+    )
+
+    sector_heatmap = factor_scores.groupby(
+        "SECTOR"
+    ).agg({
+
+        "FACTOR_SCORE": "mean",
+
+        "FINAL_SCORE": "mean",
+
+        "SYMBOL": "count"
+
+    }).reset_index()
+
+    sector_heatmap.rename(columns={
+
+        "SYMBOL": "TOTAL_STOCKS"
+
+    }, inplace=True)
+
+    fig5 = px.treemap(
+
+        sector_heatmap,
+
+        path=["SECTOR"],
+
+        values="TOTAL_STOCKS",
+
+        color="FACTOR_SCORE",
+
+        hover_data=[
+
+            "FINAL_SCORE",
+
+            "TOTAL_STOCKS"
+        ],
+
+        title="Sector Leadership Heatmap"
+    )
+
+    st.plotly_chart(
+        fig5,
+        use_container_width=True
     )
 
 
     # =====================================
-    # GROWTH FACTOR
+    # MARKET CAP DISTRIBUTION
     # =====================================
 
-    df["REVENUE_FACTOR"] = percentile_score(
-        df["REVENUE_GROWTH"].fillna(0),
-        ascending=True
+    st.subheader(
+        "Market Cap Distribution"
     )
 
-    df["EARNINGS_FACTOR"] = percentile_score(
-        df["EARNINGS_GROWTH"].fillna(0),
-        ascending=True
+    market_cap_data = factor_scores[
+        "MARKET_CAP_CATEGORY"
+    ].value_counts().reset_index()
+
+    market_cap_data.columns = [
+
+        "MARKET_CAP_CATEGORY",
+
+        "COUNT"
+    ]
+
+    fig6 = px.pie(
+
+        market_cap_data,
+
+        names="MARKET_CAP_CATEGORY",
+
+        values="COUNT",
+
+        title="Market Cap Segmentation"
     )
 
-
-    df["GROWTH_FACTOR"] = (
-
-        df["REVENUE_FACTOR"] * 0.5 +
-
-        df["EARNINGS_FACTOR"] * 0.5
-    )
-
-
-    # =====================================
-    # VALUE FACTOR
-    # =====================================
-
-    df["PE_FACTOR"] = percentile_score(
-        df["PE_RATIO"].replace(0, np.nan),
-        ascending=False
-    )
-
-    df["PB_FACTOR"] = percentile_score(
-        df["PRICE_TO_BOOK"].replace(0, np.nan),
-        ascending=False
-    )
-
-
-    df["VALUE_FACTOR"] = (
-
-        df["PE_FACTOR"] * 0.5 +
-
-        df["PB_FACTOR"] * 0.5
+    st.plotly_chart(
+        fig6,
+        use_container_width=True
     )
 
 
     # =====================================
-    # OWNERSHIP FACTOR
+    # FACTOR DISTRIBUTION
     # =====================================
 
-    df["PROMOTER_FACTOR"] = percentile_score(
-        df["PROMOTER_HOLDING"].fillna(0),
-        ascending=True
+    st.subheader(
+        "Institutional Factor Distribution"
     )
 
-    df["FII_FACTOR"] = percentile_score(
-        df["FII_HOLDING"].fillna(0),
-        ascending=True
+    fig7 = px.histogram(
+
+        factor_scores,
+
+        x="FACTOR_SCORE",
+
+        nbins=30,
+
+        color="FACTOR_GRADE",
+
+        title="Factor Score Distribution"
     )
 
-
-    df["OWNERSHIP_FACTOR"] = (
-
-        df["PROMOTER_FACTOR"] * 0.5 +
-
-        df["FII_FACTOR"] * 0.5
+    st.plotly_chart(
+        fig7,
+        use_container_width=True
     )
 
 
     # =====================================
-    # FINAL FACTOR SCORE
+    # TOP FACTOR STOCKS
     # =====================================
 
-    df["FACTOR_SCORE"] = (
-
-        df["QUALITY_FACTOR"] * 0.30 +
-
-        df["GROWTH_FACTOR"] * 0.30 +
-
-        df["VALUE_FACTOR"] * 0.20 +
-
-        df["OWNERSHIP_FACTOR"] * 0.20
+    st.subheader(
+        "Elite Institutional Stocks"
     )
 
-
-    return df
-
-
-def rank_factor_stocks(df):
-
-    df = df.sort_values(
+    elite_stocks = factor_scores.sort_values(
         by="FACTOR_SCORE",
         ascending=False
+    ).head(20)
+
+    elite_columns = [
+
+        "FACTOR_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "MARKET_CAP_CATEGORY",
+
+        "FACTOR_SCORE",
+
+        "FACTOR_GRADE",
+
+        "FINAL_SCORE"
+    ]
+
+    st.dataframe(
+        elite_stocks[elite_columns],
+        use_container_width=True
     )
 
-    df["FACTOR_RANK"] = range(
-        1,
-        len(df) + 1
-    )
 
-    return df
+# =====================================================
+# SCORE DISTRIBUTION
+# =====================================================
 
+st.subheader(
+    "📈 Institutional Score Distribution"
+)
 
-def classify_factor_quality(score):
+fig8 = px.histogram(
+    filtered_rankings,
+    x="FINAL_SCORE",
+    nbins=20,
+    title="Final Institutional Score Distribution"
+)
 
-    if score >= 80:
-
-        return "ELITE"
-
-    elif score >= 65:
-
-        return "STRONG"
-
-    elif score >= 50:
-
-        return "AVERAGE"
-
-    else:
-
-        return "WEAK"
+st.plotly_chart(
+    fig8,
+    use_container_width=True
+)
 
 
-def main():
+# =====================================================
+# FOOTER
+# =====================================================
 
-    print("Loading valuation dataset...")
+st.markdown("---")
 
-    df = pd.read_csv(INPUT_FILE)
-
-    df = build_factor_model(df)
-
-    df = rank_factor_stocks(df)
-
-    df["FACTOR_GRADE"] = df[
-        "FACTOR_SCORE"
-    ].apply(classify_factor_quality)
-
-    os.makedirs(
-        "data/exports",
-        exist_ok=True
-    )
-
-    df.to_csv(
-        OUTPUT_FILE,
-        index=False
-    )
-
-    print("\nTop Institutional Factor Stocks:\n")
-
-    print(
-        df[
-            [
-                "FACTOR_RANK",
-
-                "SYMBOL",
-
-                "SECTOR",
-
-                "MARKET_CAP_CATEGORY",
-
-                "FACTOR_SCORE",
-
-                "FACTOR_GRADE"
-            ]
-        ].head(20)
-    )
-
-    print(f"\nSaved to: {OUTPUT_FILE}")
-
-
-if __name__ == "__main__":
-
-    main()
+st.caption(
+    "Institutional Fundamental Analysis Platform | India"
+)
