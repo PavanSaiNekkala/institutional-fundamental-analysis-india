@@ -24,7 +24,9 @@ required_files = [
 
     "data/exports/sector_rotation.csv",
 
-    "data/exports/factor_scores.csv"
+    "data/exports/factor_scores.csv",
+
+    "data/exports/model_portfolio.csv"
 ]
 
 
@@ -58,6 +60,7 @@ python scoring/final_ranker.py
 python analytics/compounder_detector.py
 python analytics/institutional_buying.py
 python analytics/sector_rotation.py
+python analytics/portfolio_builder.py
     """)
 
     st.stop()
@@ -90,21 +93,39 @@ def load_data():
         "data/exports/factor_scores.csv"
     )
 
+    portfolio = pd.read_csv(
+        "data/exports/model_portfolio.csv"
+    )
+
     return (
+
         rankings,
+
         compounders,
+
         institutional,
+
         sectors,
-        factor_scores
+
+        factor_scores,
+
+        portfolio
     )
 
 
 (
     rankings,
+
     compounders,
+
     institutional,
+
     sectors,
-    factor_scores
+
+    factor_scores,
+
+    portfolio
+
 ) = load_data()
 
 
@@ -216,7 +237,7 @@ col4.metric(
 # TABS
 # =====================================================
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
     "🏆 Rankings",
 
@@ -226,7 +247,9 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
     "📊 Sector Analytics",
 
-    "🔥 Heatmaps"
+    "🔥 Heatmaps",
+
+    "📁 Portfolio"
 ])
 
 
@@ -606,6 +629,145 @@ with tab5:
 
 
 # =====================================================
+# TAB 6 — PORTFOLIO
+# =====================================================
+
+with tab6:
+
+    st.subheader(
+        "Institutional Model Portfolio"
+    )
+
+    portfolio_columns = [
+
+        "PORTFOLIO_RANK",
+
+        "SYMBOL",
+
+        "SECTOR",
+
+        "MARKET_CAP_CATEGORY",
+
+        "FACTOR_SCORE",
+
+        "PORTFOLIO_WEIGHT"
+    ]
+
+    available_portfolio_columns = [
+        col for col in portfolio_columns
+        if col in portfolio.columns
+    ]
+
+    st.dataframe(
+        portfolio[
+            available_portfolio_columns
+        ],
+        use_container_width=True
+    )
+
+
+    # =====================================
+    # SECTOR ALLOCATION
+    # =====================================
+
+    st.subheader(
+        "Portfolio Sector Allocation"
+    )
+
+    sector_alloc = portfolio[
+        "SECTOR"
+    ].value_counts().reset_index()
+
+    sector_alloc.columns = [
+
+        "SECTOR",
+
+        "COUNT"
+    ]
+
+    fig9 = px.pie(
+
+        sector_alloc,
+
+        names="SECTOR",
+
+        values="COUNT",
+
+        title="Sector Allocation"
+    )
+
+    st.plotly_chart(
+        fig9,
+        use_container_width=True
+    )
+
+
+    # =====================================
+    # MARKET CAP ALLOCATION
+    # =====================================
+
+    st.subheader(
+        "Portfolio Market Cap Allocation"
+    )
+
+    cap_alloc = portfolio[
+        "MARKET_CAP_CATEGORY"
+    ].value_counts().reset_index()
+
+    cap_alloc.columns = [
+
+        "MARKET_CAP_CATEGORY",
+
+        "COUNT"
+    ]
+
+    fig10 = px.bar(
+
+        cap_alloc,
+
+        x="MARKET_CAP_CATEGORY",
+
+        y="COUNT",
+
+        color="MARKET_CAP_CATEGORY",
+
+        title="Market Cap Allocation"
+    )
+
+    st.plotly_chart(
+        fig10,
+        use_container_width=True
+    )
+
+
+    # =====================================
+    # TOP PORTFOLIO STOCKS
+    # =====================================
+
+    st.subheader(
+        "Top Portfolio Holdings"
+    )
+
+    fig11 = px.bar(
+
+        portfolio.head(10),
+
+        x="SYMBOL",
+
+        y="FACTOR_SCORE",
+
+        color="SECTOR",
+
+        title="Top Portfolio Holdings"
+    )
+
+    st.plotly_chart(
+        fig11,
+        use_container_width=True
+    )
+
+
+# =====================================================
 # SCORE DISTRIBUTION
 # =====================================================
 
@@ -613,7 +775,7 @@ st.subheader(
     "📈 Institutional Score Distribution"
 )
 
-fig8 = px.histogram(
+fig12 = px.histogram(
     filtered_rankings,
     x="FINAL_SCORE",
     nbins=20,
@@ -621,7 +783,7 @@ fig8 = px.histogram(
 )
 
 st.plotly_chart(
-    fig8,
+    fig12,
     use_container_width=True
 )
 
