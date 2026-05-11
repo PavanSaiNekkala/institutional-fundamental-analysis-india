@@ -1,23 +1,25 @@
-import pandas as pd
-import yfinance as yf
 import os
 import sys
 import time
 from datetime import datetime
+
+import pandas as pd
+import yfinance as yf
 
 
 # =====================================
 # PROJECT ROOT PATH FIX
 # =====================================
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            ".."
-        )
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        ".."
     )
 )
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 
 from utils.sector_classifier import classify_sector
@@ -35,7 +37,7 @@ def load_stock_universe():
         UNIVERSE_FILE
     )
 
-    stocks = df["SYMBOL"].tolist()
+    stocks = df["SYMBOL"].dropna().tolist()
 
     return stocks
 
@@ -184,24 +186,26 @@ def main():
 
     print(f"\nSaved to: {OUTPUT_FILE}")
 
-    print("\nMarket Cap Distribution:\n")
+    if not df.empty:
 
-    print(
-        df["MARKET_CAP_CATEGORY"]
-        .value_counts()
-    )
+        print("\nMarket Cap Distribution:\n")
 
-    print("\nSector Distribution:\n")
+        print(
+            df["MARKET_CAP_CATEGORY"]
+            .value_counts()
+        )
 
-    print(
-        df["SECTOR"]
-        .value_counts()
-        .head(20)
-    )
+        print("\nSector Distribution:\n")
 
-    print("\nSample Data:\n")
+        print(
+            df["SECTOR"]
+            .value_counts()
+            .head(20)
+        )
 
-    print(df.head())
+        print("\nSample Data:\n")
+
+        print(df.head())
 
 
 if __name__ == "__main__":
