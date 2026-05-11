@@ -1,0 +1,166 @@
+name: Daily Institutional Pipeline
+
+on:
+
+  schedule:
+
+    # Runs daily at 6:00 AM UTC
+    - cron: "0 6 * * *"
+
+  workflow_dispatch:
+
+
+jobs:
+
+  build-data:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # =====================================
+      # CHECKOUT
+      # =====================================
+
+      - name: Checkout Repository
+
+        uses: actions/checkout@v4
+
+
+      # =====================================
+      # PYTHON SETUP
+      # =====================================
+
+      - name: Setup Python
+
+        uses: actions/setup-python@v5
+
+        with:
+
+          python-version: "3.11"
+
+
+      # =====================================
+      # INSTALL DEPENDENCIES
+      # =====================================
+
+      - name: Install Dependencies
+
+        run: |
+
+          python -m pip install --upgrade pip
+
+          pip install -r requirements.txt
+
+
+      # =====================================
+      # RUN INSTITUTIONAL PIPELINE
+      # =====================================
+
+      - name: Fetch NSE Universe
+
+        run: |
+          python collectors/nse_collector.py
+
+
+      - name: Fetch Institutional Fundamentals
+
+        run: |
+          python collectors/screener_collector.py
+
+
+      - name: Clean Financial Data
+
+        run: |
+          python preprocessing/cleaner.py
+
+
+      - name: Growth Scoring
+
+        run: |
+          python scoring/growth_score.py
+
+
+      - name: Quality Scoring
+
+        run: |
+          python scoring/quality_score.py
+
+
+      - name: Ownership Scoring
+
+        run: |
+          python scoring/ownership_score.py
+
+
+      - name: Valuation Scoring
+
+        run: |
+          python scoring/valuation_score.py
+
+
+      - name: Factor Investing Engine
+
+        run: |
+          python scoring/factor_model.py
+
+
+      - name: Final Institutional Rankings
+
+        run: |
+          python scoring/final_ranker.py
+
+
+      - name: Compounder Detection
+
+        run: |
+          python analytics/compounder_detector.py
+
+
+      - name: Institutional Buying Analytics
+
+        run: |
+          python analytics/institutional_buying.py
+
+
+      - name: Sector Rotation Analytics
+
+        run: |
+          python analytics/sector_rotation.py
+
+
+      - name: Portfolio Construction
+
+        run: |
+          python analytics/portfolio_builder.py
+
+
+      - name: Risk Analytics
+
+        run: |
+          python analytics/risk_engine.py
+
+
+      - name: AI Research Generation
+
+        run: |
+          python analytics/ai_research_assistant.py
+
+
+      # =====================================
+      # COMMIT UPDATED DATASETS
+      # =====================================
+
+      - name: Commit Updated Institutional Data
+
+        run: |
+
+          git config --global user.name "github-actions"
+
+          git config --global user.email "actions@github.com"
+
+          git add .
+
+          git commit -m "Automated institutional pipeline update" || echo "No changes"
+
+          git push
