@@ -116,7 +116,7 @@ def main():
     stocks = load_stock_universe()
 
     # Initial stability limit
-    stocks = stocks[:200]
+    stocks = stocks[:2500]
 
     print(
         f"\nTotal Stocks Selected: {len(stocks)}"
