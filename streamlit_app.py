@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
+import subprocess
 
 
 st.set_page_config(
@@ -9,9 +11,81 @@ st.set_page_config(
 )
 
 
-# =========================
+# =========================================
+# AUTO PIPELINE EXECUTION
+# =========================================
+
+def run_pipeline():
+
+    st.warning("Generating institutional datasets...")
+
+    pipeline_steps = [
+
+        "python collectors/screener_collector.py",
+
+        "python preprocessing/cleaner.py",
+
+        "python scoring/growth_score.py",
+
+        "python scoring/quality_score.py",
+
+        "python scoring/ownership_score.py",
+
+        "python scoring/final_ranker.py",
+
+        "python analytics/compounder_detector.py",
+
+        "python analytics/institutional_buying.py",
+
+        "python analytics/sector_rotation.py"
+    ]
+
+    for step in pipeline_steps:
+
+        try:
+
+            subprocess.run(
+                step,
+                shell=True,
+                check=True
+            )
+
+        except Exception as e:
+
+            st.error(f"Pipeline failed: {e}")
+
+
+# =========================================
+# CHECK REQUIRED FILES
+# =========================================
+
+required_files = [
+
+    "data/exports/final_rankings.csv",
+
+    "data/exports/compounders.csv",
+
+    "data/exports/institutional_buying.csv",
+
+    "data/exports/sector_rotation.csv"
+]
+
+
+missing_files = [
+
+    file for file in required_files
+    if not os.path.exists(file)
+]
+
+
+if missing_files:
+
+    run_pipeline()
+
+
+# =========================================
 # LOAD DATA
-# =========================
+# =========================================
 
 @st.cache_data
 def load_data():
@@ -38,9 +112,9 @@ def load_data():
 rankings, compounders, institutional, sectors = load_data()
 
 
-# =========================
+# =========================================
 # HEADER
-# =========================
+# =========================================
 
 st.title("🇮🇳 Institutional Fundamental Analysis Platform")
 
@@ -49,9 +123,9 @@ Professional Indian Equity Institutional Analytics System
 """)
 
 
-# =========================
-# SIDEBAR
-# =========================
+# =========================================
+# SIDEBAR FILTERS
+# =========================================
 
 st.sidebar.header("Dashboard Filters")
 
@@ -70,9 +144,9 @@ selected_rating = st.sidebar.selectbox(
 )
 
 
-# =========================
+# =========================================
 # FILTER DATA
-# =========================
+# =========================================
 
 filtered_rankings = rankings.copy()
 
@@ -89,9 +163,9 @@ if selected_rating != "ALL":
     ]
 
 
-# =========================
+# =========================================
 # TOP METRICS
-# =========================
+# =========================================
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -116,9 +190,9 @@ col4.metric(
 )
 
 
-# =========================
+# =========================================
 # TABS
-# =========================
+# =========================================
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "🏆 Rankings",
@@ -128,9 +202,9 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 
-# =========================
+# =========================================
 # TAB 1 — RANKINGS
-# =========================
+# =========================================
 
 with tab1:
 
@@ -166,9 +240,9 @@ with tab1:
     )
 
 
-# =========================
+# =========================================
 # TAB 2 — COMPOUNDERS
-# =========================
+# =========================================
 
 with tab2:
 
@@ -206,9 +280,9 @@ with tab2:
     )
 
 
-# =========================
-# TAB 3 — INSTITUTIONAL
-# =========================
+# =========================================
+# TAB 3 — INSTITUTIONAL BUYING
+# =========================================
 
 with tab3:
 
@@ -242,9 +316,9 @@ with tab3:
     )
 
 
-# =========================
+# =========================================
 # TAB 4 — SECTOR ANALYTICS
-# =========================
+# =========================================
 
 with tab4:
 
@@ -269,9 +343,9 @@ with tab4:
     )
 
 
-# =========================
+# =========================================
 # FOOTER
-# =========================
+# =========================================
 
 st.markdown("---")
 
