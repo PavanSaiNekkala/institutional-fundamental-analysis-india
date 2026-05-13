@@ -1,8 +1,9 @@
 import pandas as pd
-import os
+import numpy as np
+from pathlib import Path
+import traceback
 
-
-INPUT_FILE = "data/financials/fundamentals.csv"
+INPUT_FILE = "data/raw/fundamentals.csv"
 OUTPUT_FILE = "data/cleaned/cleaned_fundamentals.csv"
 
 
@@ -10,37 +11,83 @@ def clean_fundamentals():
 
     print("Loading raw fundamentals...")
 
-    df = pd.read_csv(INPUT_FILE)
+    input_path = Path(INPUT_FILE)
 
-    print(f"Initial Rows: {len(df)}")
+    # ---------------------------------------------------
+    # FILE EXISTS CHECK
+    # ---------------------------------------------------
+    if not input_path.exists():
+        print(f"ERROR: Input file not found -> {INPUT_FILE}")
+        return
 
-    # Remove duplicates
-    df.drop_duplicates(inplace=True)
+    # ---------------------------------------------------
+    # EMPTY FILE CHECK
+    # ---------------------------------------------------
+    if input_path.stat().st_size == 0:
+        print("ERROR: Input CSV is empty")
+        return
 
-    # Fill missing numeric values
-    numeric_cols = df.select_dtypes(include=["float64", "int64"]).columns
+    try:
+        df = pd.read_csv(INPUT_FILE)
 
-    for col in numeric_cols:
-        df[col] = df[col].fillna(0)
+    except pd.errors.EmptyDataError:
+        print("ERROR: CSV contains no data")
+        return
 
-    # Standardize column names
-    df.columns = [col.upper() for col in df.columns]
+    except Exception as e:
+        print("ERROR reading CSV")
+        print(str(e))
+        traceback.print_exc()
+        return
 
-    # Remove rows with missing symbols
-    df = df[df["SYMBOL"].notna()]
+    # ---------------------------------------------------
+    # EMPTY DATAFRAME CHECK
+    # ---------------------------------------------------
+    if df.empty:
+        print("ERROR: DataFrame is empty")
+        return
 
-    print(f"Cleaned Rows: {len(df)}")
+    print(f"Loaded {len(df)} rows")
 
-    os.makedirs("data/cleaned", exist_ok=True)
+    # ---------------------------------------------------
+    # CLEANING
+    # ---------------------------------------------------
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    df = df.fillna(0)
+
+    # Remove duplicate stocks
+    if "symbol" in df.columns:
+        df = df.drop_duplicates(subset=["symbol"])
+
+    # Convert numeric columns safely
+    for col in df.columns:
+
+        try:
+            df[col] = pd.to_numeric(df[col], errors="ignore")
+
+        except Exception:
+            pass
+
+    # ---------------------------------------------------
+    # SAVE
+    # ---------------------------------------------------
+    output_path = Path(OUTPUT_FILE)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     df.to_csv(OUTPUT_FILE, index=False)
 
-    print(f"\nCleaned data saved to: {OUTPUT_FILE}")
-
-    return df
+    print(f"Cleaned data saved -> {OUTPUT_FILE}")
+    print(f"Final rows: {len(df)}")
 
 
 if __name__ == "__main__":
 
-    clean_fundamentals()
-  
+    try:
+        clean_fundamentals()
+
+    except Exception as e:
+        print("CLEANER FAILED")
+        print(str(e))
+        traceback.print_exc()
