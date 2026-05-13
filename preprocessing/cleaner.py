@@ -7,7 +7,7 @@ import sys
 
 warnings.filterwarnings("ignore")
 
-INPUT_FILE = "data/raw/fundamentals.csv"
+INPUT_FILE = "data/financials/fundamentals.csv"
 OUTPUT_FILE = "data/cleaned/cleaned_fundamentals.csv"
 
 
