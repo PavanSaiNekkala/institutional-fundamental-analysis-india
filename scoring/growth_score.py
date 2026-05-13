@@ -8,12 +8,12 @@ import sys
 warnings.filterwarnings("ignore")
 
 # =====================================
-# INPUT / OUTPUT
+# INPUT / OUTPUT PATHS
 # =====================================
 
-PARQUET_OUTPUT = (
+PARQUET_INPUT = (
     "data/cache/parquet/"
-    "growth_scored.parquet"
+    "fundamentals.parquet"
 )
 
 CSV_OUTPUT = (
@@ -25,7 +25,6 @@ PARQUET_OUTPUT = (
     "data/cache/parquet/"
     "cleaned_fundamentals.parquet"
 )
-
 
 # =====================================
 # CLEANER
@@ -254,7 +253,6 @@ def clean_fundamentals():
         f"\nParquet Saved To:\n"
         f"{PARQUET_OUTPUT}"
     )
-
 
 # =====================================
 # ENTRY POINT
