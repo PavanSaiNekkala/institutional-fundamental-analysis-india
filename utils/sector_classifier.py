@@ -1,170 +1,211 @@
-def classify_sector(sector_name, industry_name):
-
-    sector_name = str(sector_name).upper()
-
-    industry_name = str(industry_name).upper()
-
+def classify_sector(
+    sector,
+    industry
+):
 
     # =====================================
-    # IT
+    # SAFE LOWERCASE
     # =====================================
 
-    if (
-        "SOFTWARE" in industry_name or
-        "IT" in sector_name or
-        "TECHNOLOGY" in sector_name
-    ):
+    sector = str(
+        sector
+    ).lower()
 
-        return "IT"
+    industry = str(
+        industry
+    ).lower()
 
-
-    # =====================================
-    # BANKING
-    # =====================================
-
-    elif (
-        "BANK" in industry_name or
-        "BANK" in sector_name
-    ):
-
-        return "BANKING"
-
+    text = (
+        sector + " " + industry
+    )
 
     # =====================================
-    # NBFC
+    # BANKING & FINANCIALS
     # =====================================
 
-    elif (
-        "FINANCE" in industry_name or
-        "NBFC" in industry_name
-    ):
+    if any(keyword in text for keyword in [
 
-        return "NBFC"
+        "bank",
+        "financial",
+        "finance",
+        "insurance",
+        "nbfc",
+        "capital",
+        "asset management",
+        "broking"
 
+    ]):
+
+        return "Financial Services"
+
+    # =====================================
+    # INFORMATION TECHNOLOGY
+    # =====================================
+
+    elif any(keyword in text for keyword in [
+
+        "software",
+        "it services",
+        "technology",
+        "cloud",
+        "ai",
+        "analytics",
+        "digital",
+        "saas"
+
+    ]):
+
+        return "Information Technology"
 
     # =====================================
     # PHARMA
     # =====================================
 
-    elif (
-        "PHARMA" in industry_name or
-        "HEALTHCARE" in sector_name or
-        "DRUG" in industry_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "PHARMA"
+        "pharma",
+        "pharmaceutical",
+        "healthcare",
+        "hospital",
+        "biotech",
+        "drug",
+        "life sciences"
 
+    ]):
 
-    # =====================================
-    # AUTO
-    # =====================================
-
-    elif (
-        "AUTO" in industry_name or
-        "AUTOMOBILE" in sector_name
-    ):
-
-        return "AUTO"
-
+        return "Healthcare"
 
     # =====================================
     # FMCG
     # =====================================
 
-    elif (
-        "FMCG" in sector_name or
-        "CONSUMER" in sector_name or
-        "HOUSEHOLD" in industry_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "FMCG"
+        "fmcg",
+        "consumer",
+        "foods",
+        "beverages",
+        "household",
+        "personal products"
 
+    ]):
 
-    # =====================================
-    # POWER
-    # =====================================
-
-    elif (
-        "POWER" in industry_name or
-        "UTILITY" in sector_name or
-        "ENERGY" in sector_name
-    ):
-
-        return "POWER"
-
+        return "Consumer Goods"
 
     # =====================================
-    # DEFENCE
+    # AUTO
     # =====================================
 
-    elif (
-        "DEFENCE" in industry_name or
-        "AEROSPACE" in industry_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "DEFENCE"
+        "auto",
+        "automobile",
+        "vehicle",
+        "tyre",
+        "motor"
 
+    ]):
+
+        return "Automobile"
+
+    # =====================================
+    # ENERGY
+    # =====================================
+
+    elif any(keyword in text for keyword in [
+
+        "oil",
+        "gas",
+        "energy",
+        "power",
+        "renewable",
+        "solar",
+        "electric"
+
+    ]):
+
+        return "Energy"
 
     # =====================================
     # METALS
     # =====================================
 
-    elif (
-        "STEEL" in industry_name or
-        "METAL" in sector_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "METALS"
+        "steel",
+        "metal",
+        "mining",
+        "copper",
+        "aluminium",
+        "iron"
 
+    ]):
 
-    # =====================================
-    # REALTY
-    # =====================================
-
-    elif (
-        "REAL ESTATE" in industry_name or
-        "REALTY" in sector_name
-    ):
-
-        return "REALTY"
-
+        return "Metals & Mining"
 
     # =====================================
-    # CHEMICALS
+    # REAL ESTATE
     # =====================================
 
-    elif (
-        "CHEMICAL" in industry_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "CHEMICALS"
+        "real estate",
+        "construction",
+        "cement",
+        "infrastructure",
+        "housing"
 
+    ]):
 
-    # =====================================
-    # CAPITAL GOODS
-    # =====================================
-
-    elif (
-        "INDUSTRIAL" in sector_name or
-        "ENGINEERING" in industry_name
-    ):
-
-        return "CAPITAL GOODS"
-
+        return "Infrastructure & Realty"
 
     # =====================================
     # TELECOM
     # =====================================
 
-    elif (
-        "TELECOM" in industry_name
-    ):
+    elif any(keyword in text for keyword in [
 
-        return "TELECOM"
+        "telecom",
+        "communication",
+        "wireless",
+        "broadband"
 
+    ]):
+
+        return "Telecommunication"
+
+    # =====================================
+    # CHEMICALS
+    # =====================================
+
+    elif any(keyword in text for keyword in [
+
+        "chemical",
+        "fertilizer",
+        "agrochemical",
+        "speciality chemical"
+
+    ]):
+
+        return "Chemicals"
+
+    # =====================================
+    # TEXTILES
+    # =====================================
+
+    elif any(keyword in text for keyword in [
+
+        "textile",
+        "garment",
+        "fabric",
+        "cotton"
+
+    ]):
+
+        return "Textiles"
 
     # =====================================
     # DEFAULT
     # =====================================
 
-    return "OTHERS"
+    return "Others"
