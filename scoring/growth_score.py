@@ -1,69 +1,152 @@
 import pandas as pd
 import numpy as np
-from pathlib import Path
 import traceback
 import warnings
 import sys
+from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
 # =====================================
-# INPUT / OUTPUT PATHS
+# FILE PATHS
 # =====================================
 
 PARQUET_INPUT = (
     "data/cache/parquet/"
-    "fundamentals.parquet"
+    "cleaned_fundamentals.parquet"
 )
 
 CSV_OUTPUT = (
-    "data/cleaned/"
-    "cleaned_fundamentals.csv"
+    "data/scored/"
+    "growth_scored.csv"
 )
 
 PARQUET_OUTPUT = (
     "data/cache/parquet/"
-    "cleaned_fundamentals.parquet"
+    "growth_scored.parquet"
 )
 
 # =====================================
-# CLEANER
+# GROWTH SCORE FUNCTION
 # =====================================
 
-def clean_fundamentals():
+def calculate_growth_score(row):
+
+    score = 0
+
+    try:
+
+        revenue_growth = row.get(
+            "REVENUE_GROWTH",
+            0
+        )
+
+        earnings_growth = row.get(
+            "EARNINGS_GROWTH",
+            0
+        )
+
+        roe = row.get(
+            "ROE",
+            0
+        )
+
+        operating_margin = row.get(
+            "OPERATING_MARGIN",
+            0
+        )
+
+        # ---------------------------------
+        # REVENUE GROWTH
+        # ---------------------------------
+
+        if revenue_growth > 0.30:
+            score += 30
+
+        elif revenue_growth > 0.20:
+            score += 20
+
+        elif revenue_growth > 0.10:
+            score += 10
+
+        # ---------------------------------
+        # EARNINGS GROWTH
+        # ---------------------------------
+
+        if earnings_growth > 0.30:
+            score += 30
+
+        elif earnings_growth > 0.20:
+            score += 20
+
+        elif earnings_growth > 0.10:
+            score += 10
+
+        # ---------------------------------
+        # ROE
+        # ---------------------------------
+
+        if roe > 0.20:
+            score += 20
+
+        elif roe > 0.15:
+            score += 10
+
+        # ---------------------------------
+        # OPERATING MARGIN
+        # ---------------------------------
+
+        if operating_margin > 0.20:
+            score += 20
+
+        elif operating_margin > 0.10:
+            score += 10
+
+    except Exception:
+
+        return 0
+
+    return score
+
+# =====================================
+# MAIN
+# =====================================
+
+def main():
 
     print("=" * 60)
 
     print(
-        "CLEANING INSTITUTIONAL "
-        "FUNDAMENTALS"
+        "GROWTH SCORING ENGINE"
     )
 
     print("=" * 60)
-
-    input_path = Path(PARQUET_INPUT)
 
     # ---------------------------------
     # FILE CHECK
     # ---------------------------------
 
+    input_path = Path(
+        PARQUET_INPUT
+    )
+
     if not input_path.exists():
 
         print(
-            f"ERROR: Input file missing -> "
+            f"ERROR: Missing input parquet -> "
             f"{PARQUET_INPUT}"
         )
 
         sys.exit(1)
 
     # ---------------------------------
-    # LOAD PARQUET
+    # LOAD DATA
     # ---------------------------------
 
     try:
 
         print(
-            "\nLoading parquet cache..."
+            "\nLoading parquet data..."
         )
 
         df = pd.read_parquet(
@@ -73,7 +156,7 @@ def clean_fundamentals():
     except Exception as e:
 
         print(
-            f"ERROR reading parquet: "
+            f"ERROR loading parquet: "
             f"{e}"
         )
 
@@ -81,14 +164,10 @@ def clean_fundamentals():
 
         sys.exit(1)
 
-    # ---------------------------------
-    # EMPTY CHECK
-    # ---------------------------------
-
     if df.empty:
 
         print(
-            "ERROR: DataFrame is empty"
+            "ERROR: Empty dataset"
         )
 
         sys.exit(1)
@@ -97,91 +176,45 @@ def clean_fundamentals():
         f"\nLoaded {len(df)} rows"
     )
 
-    print(
-        f"Columns Found: "
-        f"{len(df.columns)}"
-    )
-
     # ---------------------------------
-    # PREVIEW
+    # CLEAN DATA
     # ---------------------------------
 
-    print("\nSample Data:\n")
-
-    print(df.head())
-
-    # =====================================
-    # CLEANING
-    # =====================================
-
-    print("\nCleaning data...")
-
-    # Replace inf values
     df = df.replace(
         [np.inf, -np.inf],
         np.nan
     )
 
-    # Fill missing values
     df = df.fillna(0)
 
-    # Remove duplicates
-    df = df.drop_duplicates()
+    # ---------------------------------
+    # CALCULATE GROWTH SCORE
+    # ---------------------------------
 
-    # Remove duplicate symbols
-    if "SYMBOL" in df.columns:
+    print(
+        "\nCalculating growth scores..."
+    )
 
-        df = df.drop_duplicates(
-            subset=["SYMBOL"]
-        )
+    df["GROWTH_SCORE"] = df.apply(
+        calculate_growth_score,
+        axis=1
+    )
 
-    # Strip column spaces
-    df.columns = [
-        col.strip()
-        for col in df.columns
-    ]
+    # ---------------------------------
+    # SORT
+    # ---------------------------------
 
-    # =====================================
-    # SAFE TYPE CONVERSION
-    # =====================================
+    df = df.sort_values(
+        by="GROWTH_SCORE",
+        ascending=False
+    )
 
-    excluded_columns = [
-
-        "SYMBOL",
-        "SECTOR",
-        "RAW_SECTOR",
-        "INDUSTRY",
-        "FETCH_DATE",
-        "MARKET_CAP_CATEGORY"
-    ]
-
-    for col in df.columns:
-
-        try:
-
-            if col not in excluded_columns:
-
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="coerce"
-                )
-
-        except Exception as e:
-
-            print(
-                f"Warning converting "
-                f"{col}: {e}"
-            )
-
-    # Replace conversion NaNs
-    df = df.fillna(0)
-
-    # =====================================
-    # OUTPUT DIRECTORIES
-    # =====================================
+    # ---------------------------------
+    # CREATE OUTPUT DIRS
+    # ---------------------------------
 
     Path(
-        "data/cleaned"
+        "data/scored"
     ).mkdir(
         parents=True,
         exist_ok=True
@@ -194,19 +227,17 @@ def clean_fundamentals():
         exist_ok=True
     )
 
-    # =====================================
+    # ---------------------------------
     # SAVE OUTPUTS
-    # =====================================
+    # ---------------------------------
 
     try:
 
-        # CSV export
         df.to_csv(
             CSV_OUTPUT,
             index=False
         )
 
-        # Parquet export
         df.to_parquet(
             PARQUET_OUTPUT,
             index=False
@@ -215,38 +246,29 @@ def clean_fundamentals():
     except Exception as e:
 
         print(
-            f"ERROR saving cleaned "
-            f"outputs: {e}"
+            f"ERROR saving outputs: "
+            f"{e}"
         )
 
         traceback.print_exc()
 
         sys.exit(1)
 
-    # =====================================
+    # ---------------------------------
     # SUMMARY
-    # =====================================
+    # ---------------------------------
 
     print("\n" + "=" * 60)
 
     print(
-        "DATA CLEANING COMPLETE"
+        "GROWTH SCORING COMPLETE"
     )
 
     print("=" * 60)
 
     print(
-        f"Final Rows: {len(df)}"
-    )
-
-    print(
-        f"Final Columns: "
-        f"{len(df.columns)}"
-    )
-
-    print(
-        f"\nCSV Saved To:\n"
-        f"{CSV_OUTPUT}"
+        f"Final Dataset Size: "
+        f"{len(df)}"
     )
 
     print(
@@ -255,19 +277,19 @@ def clean_fundamentals():
     )
 
 # =====================================
-# ENTRY POINT
+# ENTRY
 # =====================================
 
 if __name__ == "__main__":
 
     try:
 
-        clean_fundamentals()
+        main()
 
     except Exception as e:
 
         print(
-            "\nFATAL CLEANER ERROR"
+            "\nFATAL GROWTH ENGINE ERROR"
         )
 
         print(str(e))
