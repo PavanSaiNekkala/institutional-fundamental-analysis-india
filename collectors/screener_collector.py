@@ -35,12 +35,24 @@ from utils.market_cap_classifier import classify_market_cap
 
 INPUT_FILE = "data/raw/yfinance_stock_urls.xlsx"
 
-OUTPUT_FILE = "data/financials/fundamentals.csv"
+CSV_OUTPUT = (
+    "data/financials/fundamentals.csv"
+)
 
-# GitHub-safe settings
+PARQUET_OUTPUT = (
+    "data/cache/parquet/"
+    "fundamentals.parquet"
+)
+
+# -------------------------------------
+# GITHUB SAFE SETTINGS
+# -------------------------------------
+
 MAX_STOCKS = 300
 
 MAX_WORKERS = 3
+
+REQUEST_DELAY = 1
 
 
 # =====================================
@@ -89,7 +101,7 @@ def load_stock_universe():
             )
 
         # ---------------------------------
-        # URL COLUMN
+        # YFINANCE URL COLUMN
         # ---------------------------------
 
         elif "YFINANCE_URL" in df.columns:
@@ -140,8 +152,8 @@ def load_stock_universe():
 
             cleaned_symbols.append(symbol)
 
-        cleaned_symbols = list(
-            set(cleaned_symbols)
+        cleaned_symbols = sorted(
+            list(set(cleaned_symbols))
         )
 
         print(
@@ -176,22 +188,33 @@ def fetch_fundamentals(symbol):
 
         try:
 
+            time.sleep(REQUEST_DELAY)
+
             stock = yf.Ticker(symbol)
 
             fast_info = stock.fast_info
 
             market_cap = (
-                fast_info.get("market_cap", 0)
+                fast_info.get(
+                    "market_cap",
+                    0
+                )
             )
 
             current_price = (
-                fast_info.get("lastPrice", 0)
+                fast_info.get(
+                    "lastPrice",
+                    0
+                )
             )
 
             data = {
 
                 "SYMBOL":
-                    symbol.replace(".NS", ""),
+                    symbol.replace(
+                        ".NS",
+                        ""
+                    ),
 
                 "MARKET_CAP":
                     market_cap,
@@ -204,22 +227,32 @@ def fetch_fundamentals(symbol):
                 "CURRENT_PRICE":
                     current_price,
 
-                # Lightweight placeholders
+                # Placeholder fields
                 "PE_RATIO": 0,
+
                 "PRICE_TO_BOOK": 0,
+
                 "ROE": 0,
+
                 "DEBT_TO_EQUITY": 0,
+
                 "OPERATING_MARGIN": 0,
+
                 "PROFIT_MARGIN": 0,
+
                 "REVENUE_GROWTH": 0,
+
                 "EARNINGS_GROWTH": 0,
 
                 "SECTOR": "Unknown",
+
                 "RAW_SECTOR": "Unknown",
+
                 "INDUSTRY": "Unknown",
 
                 "FETCH_DATE":
-                    datetime.now().strftime(
+                    datetime.now()
+                    .strftime(
                         "%Y-%m-%d"
                     )
             }
@@ -232,17 +265,24 @@ def fetch_fundamentals(symbol):
 
             print(
                 f"Retry {attempt + 1}/3 "
-                f"for {symbol}: {error_msg}"
+                f"for {symbol}: "
+                f"{error_msg}"
             )
 
-            # Rate-limit protection
-            if "Too Many Requests" in error_msg:
+            # -----------------------------
+            # RATE LIMIT HANDLING
+            # -----------------------------
 
-                time.sleep(5)
+            if (
+                "Too Many Requests"
+                in error_msg
+            ):
+
+                time.sleep(10)
 
             else:
 
-                time.sleep(2)
+                time.sleep(3)
 
     print(f"FAILED: {symbol}")
 
@@ -350,7 +390,8 @@ def main():
 
                 print(
                     f"ERROR processing "
-                    f"{stock_symbol}: {e}"
+                    f"{stock_symbol}: "
+                    f"{e}"
                 )
 
                 failed += 1
@@ -384,7 +425,7 @@ def main():
     df = df.drop_duplicates()
 
     # =====================================
-    # CREATE OUTPUT DIRECTORY
+    # CREATE OUTPUT DIRECTORIES
     # =====================================
 
     os.makedirs(
@@ -392,21 +433,39 @@ def main():
         exist_ok=True
     )
 
+    os.makedirs(
+        "data/cache/parquet",
+        exist_ok=True
+    )
+
     # =====================================
-    # SAVE CSV
+    # SAVE CSV + PARQUET
     # =====================================
 
     try:
 
+        # CSV export
         df.to_csv(
-            OUTPUT_FILE,
+            CSV_OUTPUT,
             index=False
+        )
+
+        # PARQUET export
+        df.to_parquet(
+            PARQUET_OUTPUT,
+            index=False
+        )
+
+        print(
+            "\nSaved CSV + "
+            "Parquet cache"
         )
 
     except Exception as e:
 
         print(
-            f"ERROR saving CSV: {e}"
+            f"ERROR saving outputs: "
+            f"{e}"
         )
 
         traceback.print_exc()
@@ -451,8 +510,13 @@ def main():
     )
 
     print(
-        f"\nSaved to: "
-        f"{OUTPUT_FILE}"
+        f"\nCSV Saved To:\n"
+        f"{CSV_OUTPUT}"
+    )
+
+    print(
+        f"\nParquet Saved To:\n"
+        f"{PARQUET_OUTPUT}"
     )
 
     # =====================================
