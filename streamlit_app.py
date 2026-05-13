@@ -4,6 +4,7 @@ import numpy as np
 import warnings
 import traceback
 import subprocess
+import sys
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -40,32 +41,39 @@ if not Path(PARQUET_FILE).exists():
 
     pipeline_steps = [
 
-        "python collectors/screener_collector.py",
+        "collectors/screener_collector.py",
 
-        "python preprocessing/cleaner.py",
+        "preprocessing/cleaner.py",
 
-        "python scoring/growth_score.py",
+        "scoring/growth_score.py",
 
-        "python scoring/quality_score.py",
+        "scoring/quality_score.py",
 
-        "python scoring/ownership_score.py",
+        "scoring/ownership_score.py",
 
-        "python ranking/final_ranking_engine.py"
+        "ranking/final_ranking_engine.py"
     ]
 
     progress_bar = st.progress(0)
 
     status_text = st.empty()
 
+    log_container = st.empty()
+
     for index, step in enumerate(pipeline_steps):
 
         status_text.info(
-            f"Running: {step}"
+            f"Running: python {step}"
         )
 
         result = subprocess.run(
-            step,
-            shell=True
+
+            [
+                sys.executable
+            ] + step.split(),
+
+            capture_output=True,
+            text=True
         )
 
         progress = int(
@@ -75,11 +83,25 @@ if not Path(PARQUET_FILE).exists():
 
         progress_bar.progress(progress)
 
+        # Show logs
+        if result.stdout:
+
+            log_container.code(
+                result.stdout
+            )
+
+        # Handle errors
         if result.returncode != 0:
 
             st.error(
                 f"Pipeline failed at:\n{step}"
             )
+
+            if result.stderr:
+
+                st.code(
+                    result.stderr
+                )
 
             st.stop()
 
