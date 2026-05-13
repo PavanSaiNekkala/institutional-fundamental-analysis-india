@@ -26,7 +26,6 @@ PARQUET_OUTPUT = (
     "institutional_rankings.parquet"
 )
 
-
 # =====================================
 # MARKET REGIME
 # =====================================
@@ -51,12 +50,15 @@ def determine_market_regime(df):
         )
 
         composite = (
-            avg_growth +
-            avg_quality +
-            avg_ownership
-        ) / 3
 
-        if composite >= 70:
+            avg_growth * 0.35 +
+
+            avg_quality * 0.40 +
+
+            avg_ownership * 0.25
+        )
+
+        if composite >= 65:
 
             return "BULLISH"
 
@@ -70,64 +72,29 @@ def determine_market_regime(df):
 
         return "UNKNOWN"
 
-
 # =====================================
 # TRADE DECISION ENGINE
 # =====================================
 
-def generate_trade_decision(row):
-
-    score = row.get(
-        "FINAL_SCORE",
-        0
-    )
-
-    quality = row.get(
-        "QUALITY_SCORE",
-        0
-    )
-
-    growth = row.get(
-        "GROWTH_SCORE",
-        0
-    )
-
-    ownership = row.get(
-        "OWNERSHIP_SCORE",
-        0
-    )
-
-    market_cap_category = row.get(
-        "MARKET_CAP_CATEGORY",
-        "Unknown"
-    )
+def generate_trade_decision(
+    final_score
+):
 
     # ---------------------------------
-    # STRONG BUY
+    # INSTITUTIONAL STRONG BUY
     # ---------------------------------
 
-    if (
-        score >= 75 and
-        quality >= 60 and
-        growth >= 50 and
-        ownership >= 50
-    ):
+    if final_score >= 70:
 
-        if market_cap_category in [
-
-            "Large Cap",
-            "Mega Cap"
-        ]:
-
-            return "INSTITUTIONAL STRONG BUY"
-
-        return "HIGH GROWTH BUY"
+        return (
+            "INSTITUTIONAL STRONG BUY"
+        )
 
     # ---------------------------------
     # BUY
     # ---------------------------------
 
-    elif score >= 60:
+    elif final_score >= 55:
 
         return "BUY"
 
@@ -135,7 +102,7 @@ def generate_trade_decision(row):
     # HOLD
     # ---------------------------------
 
-    elif score >= 40:
+    elif final_score >= 40:
 
         return "HOLD"
 
@@ -143,12 +110,15 @@ def generate_trade_decision(row):
     # WEAK
     # ---------------------------------
 
-    elif score >= 20:
+    elif final_score >= 25:
 
         return "WEAK"
 
-    return "AVOID"
+    # ---------------------------------
+    # AVOID
+    # ---------------------------------
 
+    return "AVOID"
 
 # =====================================
 # FINAL SCORE
@@ -176,9 +146,9 @@ def calculate_final_score(row):
         0
     )
 
-    # ---------------------------------
-    # WEIGHTED MODEL
-    # ---------------------------------
+    # =====================================
+    # WEIGHTED INSTITUTIONAL MODEL
+    # =====================================
 
     final_score = (
 
@@ -189,23 +159,72 @@ def calculate_final_score(row):
         ownership * 0.25
     )
 
-    # ---------------------------------
-    # LARGE CAP BONUS
-    # ---------------------------------
+    # =====================================
+    # MARKET CAP BONUS
+    # =====================================
 
-    if market_cap > 500000000000:
+    try:
 
-        final_score += 5
+        if market_cap >= 2_000_000_000_000:
 
-    elif market_cap > 100000000000:
+            final_score += 8
 
-        final_score += 2
+        elif market_cap >= 500_000_000_000:
+
+            final_score += 5
+
+        elif market_cap >= 100_000_000_000:
+
+            final_score += 2
+
+    except Exception:
+
+        pass
+
+    # =====================================
+    # NORMALIZATION
+    # =====================================
+
+    final_score = min(
+        final_score,
+        100
+    )
+
+    final_score = max(
+        final_score,
+        0
+    )
 
     return round(
         final_score,
         2
     )
 
+# =====================================
+# INSTITUTIONAL GRADE
+# =====================================
+
+def assign_institutional_grade(
+    score
+):
+
+    if score >= 75:
+
+        return "A"
+
+    elif score >= 60:
+
+        return "B"
+
+    elif score >= 45:
+
+        return "C"
+
+    elif score >= 30:
+
+        return "D"
+
+    return "E"
 
 # =====================================
 # MAIN
@@ -221,6 +240,23 @@ def main():
     )
 
     print("=" * 60)
+
+    # ---------------------------------
+    # FILE CHECK
+    # ---------------------------------
+
+    input_path = Path(
+        INPUT_FILE
+    )
+
+    if not input_path.exists():
+
+        print(
+            f"ERROR: Missing input parquet -> "
+            f"{INPUT_FILE}"
+        )
+
+        sys.exit(1)
 
     # ---------------------------------
     # LOAD DATA
@@ -300,9 +336,11 @@ def main():
     # TRADE DECISION
     # =====================================
 
-    df["TRADE_DECISION"] = df.apply(
-        generate_trade_decision,
-        axis=1
+    df["TRADE_DECISION"] = (
+        df["FINAL_SCORE"]
+        .apply(
+            generate_trade_decision
+        )
     )
 
     # =====================================
@@ -320,29 +358,13 @@ def main():
     )
 
     # =====================================
-    # INSTITUTIONAL FLAGS
+    # INSTITUTIONAL GRADE
     # =====================================
 
-    df["INSTITUTIONAL_GRADE"] = np.where(
-
-        df["FINAL_SCORE"] >= 75,
-
-        "A",
-
-        np.where(
-
-            df["FINAL_SCORE"] >= 60,
-
-            "B",
-
-            np.where(
-
-                df["FINAL_SCORE"] >= 40,
-
-                "C",
-
-                "D"
-            )
+    df["INSTITUTIONAL_GRADE"] = (
+        df["FINAL_SCORE"]
+        .apply(
+            assign_institutional_grade
         )
     )
 
@@ -415,6 +437,15 @@ def main():
     )
 
     print(
+        "\nTrade Decision Distribution:\n"
+    )
+
+    print(
+        df["TRADE_DECISION"]
+        .value_counts()
+    )
+
+    print(
         "\nTop Institutional Stocks:\n"
     )
 
@@ -440,7 +471,6 @@ def main():
         f"\nParquet Export:\n"
         f"{PARQUET_OUTPUT}"
     )
-
 
 # =====================================
 # ENTRY
