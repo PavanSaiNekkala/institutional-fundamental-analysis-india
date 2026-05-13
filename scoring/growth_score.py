@@ -11,9 +11,9 @@ warnings.filterwarnings("ignore")
 # INPUT / OUTPUT
 # =====================================
 
-PARQUET_INPUT = (
+PARQUET_OUTPUT = (
     "data/cache/parquet/"
-    "fundamentals.parquet"
+    "growth_scored.parquet"
 )
 
 CSV_OUTPUT = (
