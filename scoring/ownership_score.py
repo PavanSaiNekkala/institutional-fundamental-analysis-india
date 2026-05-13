@@ -1,120 +1,307 @@
 import pandas as pd
-import os
+import numpy as np
+import traceback
+import warnings
+import sys
+from pathlib import Path
+
+warnings.filterwarnings("ignore")
+
+# =====================================
+# FILE PATHS
+# =====================================
+
+INPUT_FILE = (
+    "data/cache/parquet/"
+    "quality_scored.parquet"
+)
+
+CSV_OUTPUT = (
+    "data/scored/"
+    "ownership_scored.csv"
+)
+
+PARQUET_OUTPUT = (
+    "data/cache/parquet/"
+    "ownership_scored.parquet"
+)
 
 
-INPUT_FILE = "data/exports/quality_scores.csv"
+# =====================================
+# OWNERSHIP SCORE
+# =====================================
 
-OWNERSHIP_FILE = "data/ownership/shareholding.csv"
+def calculate_ownership_score(row):
 
-OUTPUT_FILE = "data/exports/ownership_scores.csv"
+    score = 0
+
+    try:
+
+        market_cap = row.get(
+            "MARKET_CAP",
+            0
+        )
+
+        roe = row.get(
+            "ROE",
+            0
+        )
+
+        profit_margin = row.get(
+            "PROFIT_MARGIN",
+            0
+        )
+
+        revenue_growth = row.get(
+            "REVENUE_GROWTH",
+            0
+        )
+
+        debt_to_equity = row.get(
+            "DEBT_TO_EQUITY",
+            0
+        )
+
+        # ---------------------------------
+        # MARKET CAP
+        # ---------------------------------
+
+        if market_cap > 500000000000:
+            score += 30
+
+        elif market_cap > 100000000000:
+            score += 20
+
+        elif market_cap > 10000000000:
+            score += 10
+
+        # ---------------------------------
+        # ROE
+        # ---------------------------------
+
+        if roe > 0.20:
+            score += 20
+
+        elif roe > 0.15:
+            score += 10
+
+        # ---------------------------------
+        # PROFITABILITY
+        # ---------------------------------
+
+        if profit_margin > 0.20:
+            score += 20
+
+        elif profit_margin > 0.10:
+            score += 10
+
+        # ---------------------------------
+        # GROWTH
+        # ---------------------------------
+
+        if revenue_growth > 0.20:
+            score += 20
+
+        elif revenue_growth > 0.10:
+            score += 10
+
+        # ---------------------------------
+        # LOW DEBT
+        # ---------------------------------
+
+        if debt_to_equity < 0.5:
+            score += 10
+
+        elif debt_to_equity < 1:
+            score += 5
+
+    except Exception:
+
+        return 0
+
+    return score
 
 
-def load_ownership_data():
+# =====================================
+# MAIN
+# =====================================
 
-    ownership_df = pd.read_csv(
-        OWNERSHIP_FILE
+def main():
+
+    print("=" * 60)
+
+    print(
+        "OWNERSHIP SCORING ENGINE"
     )
 
-    return ownership_df
+    print("=" * 60)
 
+    # ---------------------------------
+    # LOAD DATA
+    # ---------------------------------
 
-def merge_ownership(df, ownership_df):
+    try:
 
-    merged_df = pd.merge(
-        df,
-        ownership_df,
-        on="SYMBOL",
-        how="left"
+        print(
+            "\nLoading parquet data..."
+        )
+
+        df = pd.read_parquet(
+            INPUT_FILE
+        )
+
+    except Exception as e:
+
+        print(
+            f"ERROR loading parquet: "
+            f"{e}"
+        )
+
+        traceback.print_exc()
+
+        sys.exit(1)
+
+    if df.empty:
+
+        print(
+            "ERROR: Empty dataset"
+        )
+
+        sys.exit(1)
+
+    print(
+        f"\nLoaded {len(df)} rows"
     )
 
-    return merged_df
+    # ---------------------------------
+    # CLEAN DATA
+    # ---------------------------------
 
-
-def calculate_ownership_score(df):
-
-    print("Calculating real ownership scores...")
-
-    promoter_score = (
-        df["PROMOTER_HOLDING"].fillna(0) * 0.35
+    df = df.replace(
+        [np.inf, -np.inf],
+        np.nan
     )
 
-    fii_score = (
-        df["FII_HOLDING"].fillna(0) * 0.30
+    df = df.fillna(0)
+
+    # ---------------------------------
+    # CALCULATE SCORE
+    # ---------------------------------
+
+    print(
+        "\nCalculating ownership scores..."
     )
 
-    dii_score = (
-        df["DII_HOLDING"].fillna(0) * 0.25
+    df["OWNERSHIP_SCORE"] = df.apply(
+        calculate_ownership_score,
+        axis=1
     )
 
-    pledge_penalty = (
-        df["PLEDGE_PERCENT"].fillna(0) * 0.10
-    )
-
-    df["OWNERSHIP_SCORE"] = (
-
-        promoter_score +
-
-        fii_score +
-
-        dii_score -
-
-        pledge_penalty
-    )
-
-    return df
-
-
-def rank_ownership(df):
+    # ---------------------------------
+    # SORT
+    # ---------------------------------
 
     df = df.sort_values(
         by="OWNERSHIP_SCORE",
         ascending=False
     )
 
-    df["OWNERSHIP_RANK"] = range(
-        1,
-        len(df) + 1
+    # ---------------------------------
+    # CREATE OUTPUT DIRS
+    # ---------------------------------
+
+    Path(
+        "data/scored"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
     )
 
-    return df
+    Path(
+        "data/cache/parquet"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
+    # ---------------------------------
+    # SAVE OUTPUTS
+    # ---------------------------------
 
-def main():
+    try:
 
-    print("Loading quality scores...")
+        df.to_csv(
+            CSV_OUTPUT,
+            index=False
+        )
 
-    df = pd.read_csv(INPUT_FILE)
+        df.to_parquet(
+            PARQUET_OUTPUT,
+            index=False
+        )
 
-    ownership_df = load_ownership_data()
+    except Exception as e:
 
-    df = merge_ownership(df, ownership_df)
+        print(
+            f"ERROR saving outputs: "
+            f"{e}"
+        )
 
-    df = calculate_ownership_score(df)
+        traceback.print_exc()
 
-    df = rank_ownership(df)
+        sys.exit(1)
 
-    os.makedirs("data/exports", exist_ok=True)
+    # ---------------------------------
+    # SUMMARY
+    # ---------------------------------
 
-    df.to_csv(OUTPUT_FILE, index=False)
+    print("\n" + "=" * 60)
 
-    print("\nTop Ownership Ranked Stocks:\n")
+    print(
+        "OWNERSHIP SCORING COMPLETE"
+    )
+
+    print("=" * 60)
+
+    print(
+        f"Final Dataset Size: "
+        f"{len(df)}"
+    )
+
+    print(
+        "\nTop Institutional "
+        "Ownership Stocks:\n"
+    )
 
     print(
         df[
             [
                 "SYMBOL",
-                "PROMOTER_HOLDING",
-                "FII_HOLDING",
-                "DII_HOLDING",
                 "OWNERSHIP_SCORE",
-                "OWNERSHIP_RANK"
+                "MARKET_CAP_CATEGORY"
             ]
-        ].head(10)
+        ].head(20)
     )
 
-    print(f"\nSaved to: {OUTPUT_FILE}")
 
+# =====================================
+# ENTRY
+# =====================================
 
 if __name__ == "__main__":
 
-    main()
+    try:
+
+        main()
+
+    except Exception as e:
+
+        print(
+            "\nFATAL OWNERSHIP ENGINE ERROR"
+        )
+
+        print(str(e))
+
+        traceback.print_exc()
+
+        sys.exit(1)
