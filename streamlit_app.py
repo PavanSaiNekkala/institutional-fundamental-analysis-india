@@ -1,6 +1,3 @@
-# Final Enterprise Streamlit Dashboard (`streamlit_app.py`)
-
-```python
 import streamlit as st
 import pandas as pd
 import numpy as np
