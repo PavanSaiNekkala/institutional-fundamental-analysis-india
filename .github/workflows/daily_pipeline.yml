@@ -1,20 +1,18 @@
-name: Daily Institutional Pipeline
+name: Institutional Data Pipeline
 
 on:
-
-  schedule:
-
-    # Runs daily at 6:00 AM UTC
-    - cron: "0 6 * * *"
-
   workflow_dispatch:
 
+  schedule:
+    - cron: "0 4 * * 1-5"
 
 jobs:
 
-  build-data:
+  institutional-analysis:
 
     runs-on: ubuntu-latest
+
+    timeout-minutes: 120
 
     steps:
 
@@ -23,144 +21,100 @@ jobs:
       # =====================================
 
       - name: Checkout Repository
-
         uses: actions/checkout@v4
-
 
       # =====================================
       # PYTHON SETUP
       # =====================================
 
-      - name: Setup Python
-
+      - name: Set Up Python
         uses: actions/setup-python@v5
-
         with:
-
           python-version: "3.11"
-
 
       # =====================================
       # INSTALL DEPENDENCIES
       # =====================================
 
       - name: Install Dependencies
-
         run: |
-
           python -m pip install --upgrade pip
-
           pip install -r requirements.txt
 
-
       # =====================================
-      # RUN INSTITUTIONAL PIPELINE
+      # VERIFY EXCEL UNIVERSE
       # =====================================
 
-      - name: Fetch NSE Universe
-
+      - name: Verify Universe File
         run: |
-          python collectors/nse_collector.py
+          ls -lh data/raw/
+          test -f data/raw/yfinance_stock_urls.xlsx
 
+      # =====================================
+      # FINANCIAL COLLECTOR
+      # =====================================
 
-      - name: Fetch Institutional Fundamentals
-
+      - name: Run Financial Collector
         run: |
           python collectors/screener_collector.py
 
+      # =====================================
+      # DATA CLEANER
+      # =====================================
 
-      - name: Clean Financial Data
-
+      - name: Run Data Cleaner
         run: |
           python preprocessing/cleaner.py
 
+      # =====================================
+      # GROWTH SCORING
+      # =====================================
 
-      - name: Growth Scoring
-
+      - name: Run Growth Scoring
         run: |
           python scoring/growth_score.py
 
+      # =====================================
+      # QUALITY SCORING
+      # =====================================
 
-      - name: Quality Scoring
-
+      - name: Run Quality Scoring
         run: |
           python scoring/quality_score.py
 
+      # =====================================
+      # OWNERSHIP SCORING
+      # =====================================
 
-      - name: Ownership Scoring
-
+      - name: Run Ownership Scoring
         run: |
           python scoring/ownership_score.py
 
-
-      - name: Valuation Scoring
-
-        run: |
-          python scoring/valuation_score.py
-
-
-      - name: Factor Investing Engine
-
-        run: |
-          python scoring/factor_model.py
-
-
-      - name: Final Institutional Rankings
-
-        run: |
-          python scoring/final_ranker.py
-
-
-      - name: Compounder Detection
-
-        run: |
-          python analytics/compounder_detector.py
-
-
-      - name: Institutional Buying Analytics
-
-        run: |
-          python analytics/institutional_buying.py
-
-
-      - name: Sector Rotation Analytics
-
-        run: |
-          python analytics/sector_rotation.py
-
-
-      - name: Portfolio Construction
-
-        run: |
-          python analytics/portfolio_builder.py
-
-
-      - name: Risk Analytics
-
-        run: |
-          python analytics/risk_engine.py
-
-
-      - name: AI Research Generation
-
-        run: |
-          python analytics/ai_research_assistant.py
-
-
       # =====================================
-      # COMMIT UPDATED DATASETS
+      # FINAL RANKING
       # =====================================
 
-      - name: Commit Updated Institutional Data
-
+      - name: Run Final Ranking Engine
         run: |
+          python ranking/final_ranking_engine.py
 
-          git config --global user.name "github-actions"
+      # =====================================
+      # EXPORT RESULTS
+      # =====================================
 
-          git config --global user.email "actions@github.com"
+      - name: Export Excel Results
+        run: |
+          python exports/excel_exporter.py
 
-          git add .
+      # =====================================
+      # UPLOAD OUTPUTS
+      # =====================================
 
-          git commit -m "Automated institutional pipeline update" || echo "No changes"
-
-          git push
+      - name: Upload Output Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: institutional-analysis-results
+          path: |
+            data/financials/
+            data/cleaned/
+            exports/
