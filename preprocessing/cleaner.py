@@ -7,148 +7,273 @@ import sys
 
 warnings.filterwarnings("ignore")
 
-INPUT_FILE = "data/financials/fundamentals.csv"
-OUTPUT_FILE = "data/cleaned/cleaned_fundamentals.csv"
+# =====================================
+# INPUT / OUTPUT
+# =====================================
 
+PARQUET_INPUT = (
+    "data/cache/parquet/"
+    "fundamentals.parquet"
+)
+
+CSV_OUTPUT = (
+    "data/cleaned/"
+    "cleaned_fundamentals.csv"
+)
+
+PARQUET_OUTPUT = (
+    "data/cache/parquet/"
+    "cleaned_fundamentals.parquet"
+)
+
+
+# =====================================
+# CLEANER
+# =====================================
 
 def clean_fundamentals():
 
     print("=" * 60)
-    print("LOADING RAW FUNDAMENTALS")
+
+    print(
+        "CLEANING INSTITUTIONAL "
+        "FUNDAMENTALS"
+    )
+
     print("=" * 60)
 
-    input_path = Path(INPUT_FILE)
+    input_path = Path(PARQUET_INPUT)
 
-    # ---------------------------------------------------
-    # CHECK INPUT FILE EXISTS
-    # ---------------------------------------------------
+    # ---------------------------------
+    # FILE CHECK
+    # ---------------------------------
+
     if not input_path.exists():
-        print(f"ERROR: Input file not found -> {INPUT_FILE}")
+
+        print(
+            f"ERROR: Input file missing -> "
+            f"{PARQUET_INPUT}"
+        )
+
         sys.exit(1)
 
-    # ---------------------------------------------------
-    # CHECK FILE IS NOT EMPTY
-    # ---------------------------------------------------
-    if input_path.stat().st_size == 0:
-        print("ERROR: Input CSV file is empty")
-        sys.exit(1)
+    # ---------------------------------
+    # LOAD PARQUET
+    # ---------------------------------
 
-    # ---------------------------------------------------
-    # READ CSV SAFELY
-    # ---------------------------------------------------
     try:
-        df = pd.read_csv(INPUT_FILE)
 
-    except pd.errors.EmptyDataError:
-        print("ERROR: CSV contains no rows/columns")
-        sys.exit(1)
+        print(
+            "\nLoading parquet cache..."
+        )
+
+        df = pd.read_parquet(
+            PARQUET_INPUT
+        )
 
     except Exception as e:
-        print("ERROR reading CSV file")
-        print(str(e))
+
+        print(
+            f"ERROR reading parquet: "
+            f"{e}"
+        )
+
         traceback.print_exc()
+
         sys.exit(1)
 
-    # ---------------------------------------------------
-    # CHECK DATAFRAME
-    # ---------------------------------------------------
+    # ---------------------------------
+    # EMPTY CHECK
+    # ---------------------------------
+
     if df.empty:
-        print("ERROR: DataFrame is empty")
+
+        print(
+            "ERROR: DataFrame is empty"
+        )
+
         sys.exit(1)
 
-    print(f"SUCCESS: Loaded {len(df)} rows")
-    print(f"Columns Found: {len(df.columns)}")
+    print(
+        f"\nLoaded {len(df)} rows"
+    )
 
-    # ---------------------------------------------------
-    # DEBUG PREVIEW
-    # ---------------------------------------------------
-    print("\nFIRST 5 ROWS:")
+    print(
+        f"Columns Found: "
+        f"{len(df.columns)}"
+    )
+
+    # ---------------------------------
+    # PREVIEW
+    # ---------------------------------
+
+    print("\nSample Data:\n")
+
     print(df.head())
 
-    print("\nCOLUMN NAMES:")
-    print(df.columns.tolist())
+    # =====================================
+    # CLEANING
+    # =====================================
 
-    # ---------------------------------------------------
-    # CLEANING PROCESS
-    # ---------------------------------------------------
     print("\nCleaning data...")
 
-    # Replace infinities
-    df = df.replace([np.inf, -np.inf], np.nan)
+    # Replace inf values
+    df = df.replace(
+        [np.inf, -np.inf],
+        np.nan
+    )
 
     # Fill missing values
     df = df.fillna(0)
 
-    # Strip spaces from column names
-    df.columns = [col.strip() for col in df.columns]
-
-    # Remove duplicate rows
+    # Remove duplicates
     df = df.drop_duplicates()
 
-    # Remove duplicate symbols if symbol column exists
-    if "symbol" in df.columns:
-        df = df.drop_duplicates(subset=["symbol"])
+    # Remove duplicate symbols
+    if "SYMBOL" in df.columns:
 
-    # ---------------------------------------------------
+        df = df.drop_duplicates(
+            subset=["SYMBOL"]
+        )
+
+    # Strip column spaces
+    df.columns = [
+        col.strip()
+        for col in df.columns
+    ]
+
+    # =====================================
     # SAFE TYPE CONVERSION
-    # ---------------------------------------------------
+    # =====================================
+
+    excluded_columns = [
+
+        "SYMBOL",
+        "SECTOR",
+        "RAW_SECTOR",
+        "INDUSTRY",
+        "FETCH_DATE",
+        "MARKET_CAP_CATEGORY"
+    ]
+
     for col in df.columns:
 
         try:
-            # Skip symbol/text columns
-            if col.lower() not in ["symbol", "sector", "industry", "company"]:
-                df[col] = pd.to_numeric(df[col], errors="ignore")
+
+            if col not in excluded_columns:
+
+                df[col] = pd.to_numeric(
+                    df[col],
+                    errors="coerce"
+                )
 
         except Exception as e:
-            print(f"Warning: Could not convert column -> {col}")
-            print(str(e))
 
-    # ---------------------------------------------------
-    # CREATE OUTPUT DIRECTORY
-    # ---------------------------------------------------
-    output_path = Path(OUTPUT_FILE)
+            print(
+                f"Warning converting "
+                f"{col}: {e}"
+            )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Replace conversion NaNs
+    df = df.fillna(0)
 
-    # ---------------------------------------------------
-    # FINAL CHECK
-    # ---------------------------------------------------
-    if df.empty:
-        print("ERROR: DataFrame became empty after cleaning")
-        sys.exit(1)
+    # =====================================
+    # OUTPUT DIRECTORIES
+    # =====================================
 
-    # ---------------------------------------------------
-    # SAVE CLEANED DATA
-    # ---------------------------------------------------
+    Path(
+        "data/cleaned"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    Path(
+        "data/cache/parquet"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    # =====================================
+    # SAVE OUTPUTS
+    # =====================================
+
     try:
 
-        df.to_csv(OUTPUT_FILE, index=False)
+        # CSV export
+        df.to_csv(
+            CSV_OUTPUT,
+            index=False
+        )
 
-        print("\n" + "=" * 60)
-        print("CLEANING COMPLETED SUCCESSFULLY")
-        print("=" * 60)
-
-        print(f"Output File : {OUTPUT_FILE}")
-        print(f"Final Rows  : {len(df)}")
-        print(f"Final Cols  : {len(df.columns)}")
+        # Parquet export
+        df.to_parquet(
+            PARQUET_OUTPUT,
+            index=False
+        )
 
     except Exception as e:
 
-        print("ERROR saving cleaned CSV")
-        print(str(e))
+        print(
+            f"ERROR saving cleaned "
+            f"outputs: {e}"
+        )
+
         traceback.print_exc()
+
         sys.exit(1)
 
+    # =====================================
+    # SUMMARY
+    # =====================================
+
+    print("\n" + "=" * 60)
+
+    print(
+        "DATA CLEANING COMPLETE"
+    )
+
+    print("=" * 60)
+
+    print(
+        f"Final Rows: {len(df)}"
+    )
+
+    print(
+        f"Final Columns: "
+        f"{len(df.columns)}"
+    )
+
+    print(
+        f"\nCSV Saved To:\n"
+        f"{CSV_OUTPUT}"
+    )
+
+    print(
+        f"\nParquet Saved To:\n"
+        f"{PARQUET_OUTPUT}"
+    )
+
+
+# =====================================
+# ENTRY POINT
+# =====================================
 
 if __name__ == "__main__":
 
     try:
+
         clean_fundamentals()
 
     except Exception as e:
 
-        print("\nFATAL ERROR IN CLEANER")
+        print(
+            "\nFATAL CLEANER ERROR"
+        )
+
         print(str(e))
+
         traceback.print_exc()
 
         sys.exit(1)
