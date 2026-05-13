@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import traceback
+import subprocess
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -27,6 +28,68 @@ PARQUET_FILE = (
 )
 
 # =========================================
+# AUTO PIPELINE EXECUTION
+# =========================================
+
+if not Path(PARQUET_FILE).exists():
+
+    st.warning(
+        "Parquet dataset missing.\n"
+        "Running institutional pipeline..."
+    )
+
+    pipeline_steps = [
+
+        "python collectors/screener_collector.py",
+
+        "python preprocessing/cleaner.py",
+
+        "python scoring/growth_score.py",
+
+        "python scoring/quality_score.py",
+
+        "python scoring/ownership_score.py",
+
+        "python ranking/final_ranking_engine.py"
+    ]
+
+    progress_bar = st.progress(0)
+
+    status_text = st.empty()
+
+    for index, step in enumerate(pipeline_steps):
+
+        status_text.info(
+            f"Running: {step}"
+        )
+
+        result = subprocess.run(
+            step,
+            shell=True
+        )
+
+        progress = int(
+            ((index + 1) / len(pipeline_steps))
+            * 100
+        )
+
+        progress_bar.progress(progress)
+
+        if result.returncode != 0:
+
+            st.error(
+                f"Pipeline failed at:\n{step}"
+            )
+
+            st.stop()
+
+    progress_bar.empty()
+
+    status_text.success(
+        "Pipeline execution complete."
+    )
+
+# =========================================
 # LOAD DATA
 # =========================================
 
@@ -39,7 +102,8 @@ def load_data():
         if not Path(PARQUET_FILE).exists():
 
             st.error(
-                f"Missing parquet file:\n{PARQUET_FILE}"
+                f"Missing parquet file:\n"
+                f"{PARQUET_FILE}"
             )
 
             return pd.DataFrame()
@@ -80,7 +144,8 @@ st.title(
 )
 
 st.markdown(
-    "Enterprise-grade institutional stock analysis engine"
+    "Enterprise-grade institutional "
+    "stock analysis engine"
 )
 
 # =========================================
@@ -95,19 +160,22 @@ market_regime = (
 if market_regime == "BULLISH":
 
     st.success(
-        f"Market Regime: {market_regime}"
+        f"Market Regime: "
+        f"{market_regime}"
     )
 
 elif market_regime == "NEUTRAL":
 
     st.warning(
-        f"Market Regime: {market_regime}"
+        f"Market Regime: "
+        f"{market_regime}"
     )
 
 else:
 
     st.error(
-        f"Market Regime: {market_regime}"
+        f"Market Regime: "
+        f"{market_regime}"
     )
 
 # =========================================
@@ -291,7 +359,9 @@ columns_to_show = [
 ]
 
 available_columns = [
+
     col for col in columns_to_show
+
     if col in filtered_df.columns
 ]
 
@@ -417,5 +487,6 @@ st.download_button(
 st.markdown("---")
 
 st.caption(
-    "Enterprise Institutional Analytics Platform"
+    "Enterprise Institutional "
+    "Analytics Platform"
 )
