@@ -26,7 +26,6 @@ PROJECT_ROOT = os.path.abspath(
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from utils.sector_classifier import classify_sector
 from utils.market_cap_classifier import classify_market_cap
 
 
@@ -34,13 +33,14 @@ from utils.market_cap_classifier import classify_market_cap
 # CONFIGURATION
 # =====================================
 
-UNIVERSE_FILE = "data/raw/nse_stock_universe.csv"
+INPUT_FILE = "data/raw/yfinance_stock_urls.xlsx"
 
 OUTPUT_FILE = "data/financials/fundamentals.csv"
 
-MAX_STOCKS = 500
+# GitHub-safe settings
+MAX_STOCKS = 300
 
-MAX_WORKERS = 10
+MAX_WORKERS = 3
 
 
 # =====================================
@@ -51,49 +51,112 @@ def load_stock_universe():
 
     try:
 
-        if not os.path.exists(UNIVERSE_FILE):
+        if not os.path.exists(INPUT_FILE):
 
             print(
-                f"ERROR: Universe file missing -> "
-                f"{UNIVERSE_FILE}"
+                f"ERROR: File not found -> "
+                f"{INPUT_FILE}"
             )
 
             sys.exit(1)
 
-        df = pd.read_csv(
-            UNIVERSE_FILE
+        print(
+            "\nLoading Excel universe..."
         )
+
+        df = pd.read_excel(INPUT_FILE)
 
         if df.empty:
 
             print(
-                "ERROR: Universe file is empty"
+                "ERROR: Input Excel is empty"
             )
 
             sys.exit(1)
 
-        if "SYMBOL" not in df.columns:
+        # ---------------------------------
+        # SYMBOL COLUMN
+        # ---------------------------------
+
+        if "SYMBOL" in df.columns:
+
+            symbols = (
+                df["SYMBOL"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+        # ---------------------------------
+        # URL COLUMN
+        # ---------------------------------
+
+        elif "YFINANCE_URL" in df.columns:
+
+            symbols = []
+
+            for url in (
+                df["YFINANCE_URL"]
+                .dropna()
+                .astype(str)
+            ):
+
+                try:
+
+                    symbol = (
+                        url.split("/quote/")[1]
+                        .split("?")[0]
+                    )
+
+                    symbols.append(symbol)
+
+                except Exception:
+
+                    continue
+
+        else:
 
             print(
-                "ERROR: SYMBOL column missing"
+                "ERROR: Missing SYMBOL "
+                "or YFINANCE_URL column"
             )
 
             sys.exit(1)
 
-        stocks = (
-            df["SYMBOL"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
+        # ---------------------------------
+        # CLEAN SYMBOLS
+        # ---------------------------------
+
+        cleaned_symbols = []
+
+        for symbol in symbols:
+
+            symbol = symbol.strip()
+
+            if not symbol.endswith(".NS"):
+
+                symbol = f"{symbol}.NS"
+
+            cleaned_symbols.append(symbol)
+
+        cleaned_symbols = list(
+            set(cleaned_symbols)
         )
 
-        return stocks
+        print(
+            f"Loaded "
+            f"{len(cleaned_symbols)} "
+            f"stocks"
+        )
+
+        return cleaned_symbols
 
     except Exception as e:
 
         print(
-            f"ERROR loading universe: {e}"
+            f"ERROR loading stock universe: "
+            f"{e}"
         )
 
         traceback.print_exc()
@@ -107,99 +170,83 @@ def load_stock_universe():
 
 def fetch_fundamentals(symbol):
 
-    try:
+    retries = 3
 
-        if not symbol.endswith(".NS"):
-
-            symbol = f"{symbol}.NS"
-
-        stock = yf.Ticker(symbol)
+    for attempt in range(retries):
 
         try:
-            info = stock.fast_info
-        except Exception:
-            info = {}
 
-        try:
-            full_info = stock.info
-        except Exception:
-            full_info = {}
+            stock = yf.Ticker(symbol)
 
-        market_cap = (
-            info.get("market_cap")
-            or full_info.get("marketCap")
-            or 0
-        )
+            fast_info = stock.fast_info
 
-        sector = classify_sector(
-            full_info.get("sector"),
-            full_info.get("industry")
-        )
+            market_cap = (
+                fast_info.get("market_cap", 0)
+            )
 
-        market_cap_category = classify_market_cap(
-            market_cap
-        )
+            current_price = (
+                fast_info.get("lastPrice", 0)
+            )
 
-        data = {
+            data = {
 
-            "SYMBOL": symbol.replace(".NS", ""),
+                "SYMBOL":
+                    symbol.replace(".NS", ""),
 
-            "MARKET_CAP": market_cap,
+                "MARKET_CAP":
+                    market_cap,
 
-            "MARKET_CAP_CATEGORY":
-                market_cap_category,
+                "MARKET_CAP_CATEGORY":
+                    classify_market_cap(
+                        market_cap
+                    ),
 
-            "PE_RATIO":
-                full_info.get("trailingPE", 0),
+                "CURRENT_PRICE":
+                    current_price,
 
-            "PRICE_TO_BOOK":
-                full_info.get("priceToBook", 0),
+                # Lightweight placeholders
+                "PE_RATIO": 0,
+                "PRICE_TO_BOOK": 0,
+                "ROE": 0,
+                "DEBT_TO_EQUITY": 0,
+                "OPERATING_MARGIN": 0,
+                "PROFIT_MARGIN": 0,
+                "REVENUE_GROWTH": 0,
+                "EARNINGS_GROWTH": 0,
 
-            "ROE":
-                full_info.get("returnOnEquity", 0),
+                "SECTOR": "Unknown",
+                "RAW_SECTOR": "Unknown",
+                "INDUSTRY": "Unknown",
 
-            "DEBT_TO_EQUITY":
-                full_info.get("debtToEquity", 0),
+                "FETCH_DATE":
+                    datetime.now().strftime(
+                        "%Y-%m-%d"
+                    )
+            }
 
-            "OPERATING_MARGIN":
-                full_info.get("operatingMargins", 0),
+            return data
 
-            "PROFIT_MARGIN":
-                full_info.get("profitMargins", 0),
+        except Exception as e:
 
-            "REVENUE_GROWTH":
-                full_info.get("revenueGrowth", 0),
+            error_msg = str(e)
 
-            "EARNINGS_GROWTH":
-                full_info.get("earningsGrowth", 0),
+            print(
+                f"Retry {attempt + 1}/3 "
+                f"for {symbol}: {error_msg}"
+            )
 
-            "CURRENT_PRICE":
-                info.get("lastPrice")
-                or full_info.get("currentPrice", 0),
+            # Rate-limit protection
+            if "Too Many Requests" in error_msg:
 
-            "SECTOR": sector,
+                time.sleep(5)
 
-            "RAW_SECTOR":
-                full_info.get("sector", "Unknown"),
+            else:
 
-            "INDUSTRY":
-                full_info.get("industry", "Unknown"),
+                time.sleep(2)
 
-            "FETCH_DATE":
-                datetime.now().strftime(
-                    "%Y-%m-%d"
-                )
-        }
+    print(f"FAILED: {symbol}")
 
-        return data
-
-    except Exception as e:
-
-        print(
-            f"FAILED: {symbol} -> {e}"
-        )
-
-        return None
+    return None
 
 
 # =====================================
@@ -217,14 +264,10 @@ def main():
 
     print("=" * 60)
 
-    print(
-        "\nLoading NSE stock universe..."
-    )
-
     stocks = load_stock_universe()
 
     # ---------------------------------
-    # LIMIT FOR STABILITY
+    # LIMIT FOR GITHUB STABILITY
     # ---------------------------------
 
     stocks = stocks[:MAX_STOCKS]
@@ -432,18 +475,6 @@ def main():
                 df[
                     "MARKET_CAP_CATEGORY"
                 ].value_counts()
-            )
-
-        if "SECTOR" in df.columns:
-
-            print(
-                "\nSector Distribution:\n"
-            )
-
-            print(
-                df["SECTOR"]
-                .value_counts()
-                .head(20)
             )
 
         print("\nSample Data:\n")
