@@ -1,76 +1,279 @@
 import pandas as pd
-import os
+import numpy as np
+from pathlib import Path
+import traceback
+import warnings
+import sys
+
+warnings.filterwarnings("ignore")
+
+# =====================================
+# INPUT / OUTPUT
+# =====================================
+
+PARQUET_INPUT = (
+    "data/cache/parquet/"
+    "fundamentals.parquet"
+)
+
+CSV_OUTPUT = (
+    "data/cleaned/"
+    "cleaned_fundamentals.csv"
+)
+
+PARQUET_OUTPUT = (
+    "data/cache/parquet/"
+    "cleaned_fundamentals.parquet"
+)
 
 
-INPUT_FILE = "data/cleaned/cleaned_fundamentals.csv"
-OUTPUT_FILE = "data/exports/growth_scores.csv"
+# =====================================
+# CLEANER
+# =====================================
 
+def clean_fundamentals():
 
-def calculate_growth_score(df):
-
-    print("Calculating institutional growth scores...")
-
-    # Convert growth metrics to percentage scores
-    df["REVENUE_GROWTH_SCORE"] = (
-        df["REVENUE_GROWTH"].fillna(0) * 100
-    )
-
-    df["EARNINGS_GROWTH_SCORE"] = (
-        df["EARNINGS_GROWTH"].fillna(0) * 100
-    )
-
-    # Final weighted growth score
-    df["GROWTH_SCORE"] = (
-        df["REVENUE_GROWTH_SCORE"] * 0.5 +
-        df["EARNINGS_GROWTH_SCORE"] * 0.5
-    )
-
-    return df
-
-
-def rank_growth_stocks(df):
-
-    df = df.sort_values(
-        by="GROWTH_SCORE",
-        ascending=False
-    )
-
-    df["GROWTH_RANK"] = range(1, len(df) + 1)
-
-    return df
-
-
-def main():
-
-    print("Loading cleaned institutional dataset...")
-
-    df = pd.read_csv(INPUT_FILE)
-
-    df = calculate_growth_score(df)
-
-    df = rank_growth_stocks(df)
-
-    os.makedirs("data/exports", exist_ok=True)
-
-    df.to_csv(OUTPUT_FILE, index=False)
-
-    print("\nTop Growth Stocks:\n")
+    print("=" * 60)
 
     print(
-        df[
-            [
-                "SYMBOL",
-                "REVENUE_GROWTH",
-                "EARNINGS_GROWTH",
-                "GROWTH_SCORE",
-                "GROWTH_RANK"
-            ]
-        ].head(10)
+        "CLEANING INSTITUTIONAL "
+        "FUNDAMENTALS"
     )
 
-    print(f"\nGrowth rankings saved to: {OUTPUT_FILE}")
+    print("=" * 60)
 
+    input_path = Path(PARQUET_INPUT)
+
+    # ---------------------------------
+    # FILE CHECK
+    # ---------------------------------
+
+    if not input_path.exists():
+
+        print(
+            f"ERROR: Input file missing -> "
+            f"{PARQUET_INPUT}"
+        )
+
+        sys.exit(1)
+
+    # ---------------------------------
+    # LOAD PARQUET
+    # ---------------------------------
+
+    try:
+
+        print(
+            "\nLoading parquet cache..."
+        )
+
+        df = pd.read_parquet(
+            PARQUET_INPUT
+        )
+
+    except Exception as e:
+
+        print(
+            f"ERROR reading parquet: "
+            f"{e}"
+        )
+
+        traceback.print_exc()
+
+        sys.exit(1)
+
+    # ---------------------------------
+    # EMPTY CHECK
+    # ---------------------------------
+
+    if df.empty:
+
+        print(
+            "ERROR: DataFrame is empty"
+        )
+
+        sys.exit(1)
+
+    print(
+        f"\nLoaded {len(df)} rows"
+    )
+
+    print(
+        f"Columns Found: "
+        f"{len(df.columns)}"
+    )
+
+    # ---------------------------------
+    # PREVIEW
+    # ---------------------------------
+
+    print("\nSample Data:\n")
+
+    print(df.head())
+
+    # =====================================
+    # CLEANING
+    # =====================================
+
+    print("\nCleaning data...")
+
+    # Replace inf values
+    df = df.replace(
+        [np.inf, -np.inf],
+        np.nan
+    )
+
+    # Fill missing values
+    df = df.fillna(0)
+
+    # Remove duplicates
+    df = df.drop_duplicates()
+
+    # Remove duplicate symbols
+    if "SYMBOL" in df.columns:
+
+        df = df.drop_duplicates(
+            subset=["SYMBOL"]
+        )
+
+    # Strip column spaces
+    df.columns = [
+        col.strip()
+        for col in df.columns
+    ]
+
+    # =====================================
+    # SAFE TYPE CONVERSION
+    # =====================================
+
+    excluded_columns = [
+
+        "SYMBOL",
+        "SECTOR",
+        "RAW_SECTOR",
+        "INDUSTRY",
+        "FETCH_DATE",
+        "MARKET_CAP_CATEGORY"
+    ]
+
+    for col in df.columns:
+
+        try:
+
+            if col not in excluded_columns:
+
+                df[col] = pd.to_numeric(
+                    df[col],
+                    errors="coerce"
+                )
+
+        except Exception as e:
+
+            print(
+                f"Warning converting "
+                f"{col}: {e}"
+            )
+
+    # Replace conversion NaNs
+    df = df.fillna(0)
+
+    # =====================================
+    # OUTPUT DIRECTORIES
+    # =====================================
+
+    Path(
+        "data/cleaned"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    Path(
+        "data/cache/parquet"
+    ).mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    # =====================================
+    # SAVE OUTPUTS
+    # =====================================
+
+    try:
+
+        # CSV export
+        df.to_csv(
+            CSV_OUTPUT,
+            index=False
+        )
+
+        # Parquet export
+        df.to_parquet(
+            PARQUET_OUTPUT,
+            index=False
+        )
+
+    except Exception as e:
+
+        print(
+            f"ERROR saving cleaned "
+            f"outputs: {e}"
+        )
+
+        traceback.print_exc()
+
+        sys.exit(1)
+
+    # =====================================
+    # SUMMARY
+    # =====================================
+
+    print("\n" + "=" * 60)
+
+    print(
+        "DATA CLEANING COMPLETE"
+    )
+
+    print("=" * 60)
+
+    print(
+        f"Final Rows: {len(df)}"
+    )
+
+    print(
+        f"Final Columns: "
+        f"{len(df.columns)}"
+    )
+
+    print(
+        f"\nCSV Saved To:\n"
+        f"{CSV_OUTPUT}"
+    )
+
+    print(
+        f"\nParquet Saved To:\n"
+        f"{PARQUET_OUTPUT}"
+    )
+
+
+# =====================================
+# ENTRY POINT
+# =====================================
 
 if __name__ == "__main__":
 
-    main()
+    try:
+
+        clean_fundamentals()
+
+    except Exception as e:
+
+        print(
+            "\nFATAL CLEANER ERROR"
+        )
+
+        print(str(e))
+
+        traceback.print_exc()
+
+        sys.exit(1)
