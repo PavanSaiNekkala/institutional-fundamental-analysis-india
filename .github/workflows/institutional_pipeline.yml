@@ -20,49 +20,101 @@ jobs:
 
     steps:
 
+      # =====================================================
+      # CHECKOUT
+      # =====================================================
+
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      # =====================================================
+      # PYTHON
+      # =====================================================
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Upgrade Pip
-        run: |
-          python -m pip install --upgrade pip
+      # =====================================================
+      # DEPENDENCIES
+      # =====================================================
 
       - name: Install Dependencies
         run: |
+
+          python -m pip install --upgrade pip
+
           pip install -r requirements.txt
+
+      # =====================================================
+      # CREATE DIRECTORIES
+      # =====================================================
 
       - name: Create Directories
         run: |
-          mkdir -p exports
+
           mkdir -p data/cache/parquet
+          mkdir -p exports
 
-      - name: Run Institutional Pipeline
+      # =====================================================
+      # PIPELINE
+      # =====================================================
+
+      - name: Run NSE Collector
         run: |
-          python ranking/final_ranking_engine.py
 
-      - name: Validate Outputs
+          python -m collectors.nse_collector
+
+      - name: Run Screener Collector
         run: |
-          ls -lh exports/
-          ls -lh data/cache/parquet/
 
-      - name: Commit Updated Files
+          python -m collectors.screener_collector
+
+      - name: Run Cleaner
+        run: |
+
+          python -m preprocessing.cleaner
+
+      - name: Run Growth Score
+        run: |
+
+          python -m scoring.growth_score
+
+      - name: Run Quality Score
+        run: |
+
+          python -m scoring.quality_score
+
+      - name: Run Valuation Score
+        run: |
+
+          python -m scoring.valuation_score
+
+      - name: Run Ownership Score
+        run: |
+
+          python -m scoring.ownership_score
+
+      - name: Run Final Ranking Engine
+        run: |
+
+          python -m ranking.final_ranking_engine
+
+      # =====================================================
+      # COMMIT OUTPUTS
+      # =====================================================
+
+      - name: Commit Generated Files
+
         run: |
 
           git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
 
-          git add exports/
-          git add data/cache/parquet/
+          git config --global user.email "actions@github.com"
 
-          git commit -m "Automated institutional refresh" || echo "No changes to commit"
+          git add .
+
+          git diff --cached --quiet || git commit -m "Automated institutional pipeline update"
 
           git push
-
-      - name: Workflow Complete
-        run: |
-          echo "Institutional pipeline completed successfully."
