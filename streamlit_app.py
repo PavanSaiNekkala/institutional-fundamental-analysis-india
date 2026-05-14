@@ -79,10 +79,6 @@ def load_data():
 
         df = pd.read_parquet(PARQUET_FILE)
 
-        # =====================================
-        # DATA CLEANING
-        # =====================================
-
         df = df.replace(
             [np.inf, -np.inf],
             np.nan
@@ -90,27 +86,22 @@ def load_data():
 
         df = df.drop_duplicates()
 
-        # Remove invalid market caps
         if "MARKET_CAP" in df.columns:
 
             df = df[
                 df["MARKET_CAP"] > 0
             ]
 
-        # Remove invalid scores
         if "FINAL_SCORE" in df.columns:
 
             df = df[
                 df["FINAL_SCORE"].notna()
             ]
 
-        # Sort rankings
-        if "FINAL_SCORE" in df.columns:
-
-            df = df.sort_values(
-                by="FINAL_SCORE",
-                ascending=False
-            )
+        df = df.sort_values(
+            by="FINAL_SCORE",
+            ascending=False
+        )
 
         return df
 
@@ -159,88 +150,12 @@ market_regime = (
     else "UNKNOWN"
 )
 
-if market_regime == "BULLISH":
-
-    st.success(
-        f"🟢 Market Regime: {market_regime}"
-    )
-
-elif market_regime == "NEUTRAL":
-
-    st.warning(
-        f"🟡 Market Regime: {market_regime}"
-    )
-
-else:
-
-    st.error(
-        f"🔴 Market Regime: {market_regime}"
-    )
-
-# =========================================================
-# METRICS
-# =========================================================
-
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-
-    st.metric(
-        "Stocks",
-        len(df)
-    )
-
-with col2:
-
-    strong_buy_count = len(
-        df[
-            df["TRADE_DECISION"]
-            == "INSTITUTIONAL STRONG BUY"
-        ]
-    )
-
-    st.metric(
-        "Strong Buy",
-        strong_buy_count
-    )
-
-with col3:
-
-    avg_score = round(
-        df["FINAL_SCORE"].mean(),
-        2
-    )
-
-    st.metric(
-        "Average Score",
-        avg_score
-    )
-
-with col4:
-
-    top_score = round(
-        df["FINAL_SCORE"].max(),
-        2
-    )
-
-    st.metric(
-        "Top Score",
-        top_score
-    )
-
-with col5:
-
-    sectors = (
-        df["SECTOR"]
-        .nunique()
-        if "SECTOR" in df.columns
-        else 0
-    )
-
-    st.metric(
-        "Sectors",
-        sectors
-    )
+st.markdown(
+    f"""
+    ## 📊 Market Regime:
+    `{market_regime}`
+    """
+)
 
 # =========================================================
 # SIDEBAR
@@ -259,12 +174,10 @@ sector_filter = st.sidebar.multiselect(
     )
 )
 
-market_cap_filter = st.sidebar.multiselect(
-    "Market Cap Category",
+subsector_filter = st.sidebar.multiselect(
+    "Subsector",
     sorted(
-        df[
-            "MARKET_CAP_CATEGORY"
-        ]
+        df["SUBSECTOR"]
         .dropna()
         .unique()
     )
@@ -279,6 +192,14 @@ trade_filter = st.sidebar.multiselect(
         .dropna()
         .unique()
     )
+)
+
+elite_only = st.sidebar.checkbox(
+    "Elite Stocks Only"
+)
+
+compounder_only = st.sidebar.checkbox(
+    "Compounders Only"
 )
 
 min_score = st.sidebar.slider(
@@ -298,25 +219,9 @@ top_n = st.sidebar.slider(
 search_stock = st.sidebar.text_input(
     "Search Symbol"
 )
-# =========================================================
-# CONFIDENCE SCORE
-# =========================================================
 
-if "FINAL_SCORE" in df.columns:
-
-    df["CONFIDENCE_SCORE"] = (
-        (
-            df["FINAL_SCORE"] * 0.60
-        ) +
-        (
-            df["QUALITY_SCORE"] * 0.25
-        ) +
-        (
-            df["OWNERSHIP_SCORE"] * 0.15
-        )
-    ).round(2)
 # =========================================================
-# FILTERS
+# FILTERING
 # =========================================================
 
 filtered_df = df.copy()
@@ -328,13 +233,11 @@ if sector_filter:
         .isin(sector_filter)
     ]
 
-if market_cap_filter:
+if subsector_filter:
 
     filtered_df = filtered_df[
-        filtered_df[
-            "MARKET_CAP_CATEGORY"
-        ]
-        .isin(market_cap_filter)
+        filtered_df["SUBSECTOR"]
+        .isin(subsector_filter)
     ]
 
 if trade_filter:
@@ -344,6 +247,22 @@ if trade_filter:
             "TRADE_DECISION"
         ]
         .isin(trade_filter)
+    ]
+
+if elite_only:
+
+    filtered_df = filtered_df[
+        filtered_df[
+            "ELITE_FLAG"
+        ] == 1
+    ]
+
+if compounder_only:
+
+    filtered_df = filtered_df[
+        filtered_df[
+            "COMPOUNDER_FLAG"
+        ] == 1
     ]
 
 filtered_df = filtered_df[
@@ -366,31 +285,69 @@ if search_stock:
 filtered_df = filtered_df.head(top_n)
 
 # =========================================================
-# TOP PICKS TABLE
+# KPI PANEL
+# =========================================================
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Stocks",
+    len(filtered_df)
+)
+
+col2.metric(
+    "Elite Stocks",
+    int(
+        filtered_df[
+            "ELITE_FLAG"
+        ].sum()
+    )
+)
+
+col3.metric(
+    "Avg Final Score",
+    round(
+        filtered_df[
+            "FINAL_SCORE"
+        ].mean(),
+        2
+    )
+)
+
+col4.metric(
+    "Compounders",
+    int(
+        filtered_df[
+            "COMPOUNDER_FLAG"
+        ].sum()
+    )
+)
+
+# =========================================================
+# LEADERBOARD
 # =========================================================
 
 st.subheader(
     "🏆 Institutional Leaderboard"
 )
 
-columns_to_show = [
+leaderboard_columns = [
 
     "RANK",
     "SYMBOL",
+    "SECTOR",
+    "SUBSECTOR",
     "FINAL_SCORE",
-    "GROWTH_SCORE",
-    "QUALITY_SCORE",
-    "OWNERSHIP_SCORE",
+    "CONFIDENCE_SCORE",
+    "LEADERSHIP_SCORE",
     "TRADE_DECISION",
     "INSTITUTIONAL_GRADE",
-    "MARKET_CAP_CATEGORY",
-    "SECTOR",
     "CURRENT_PRICE"
 ]
 
 available_columns = [
 
-    col for col in columns_to_show
+    col for col in leaderboard_columns
     if col in filtered_df.columns
 ]
 
@@ -403,120 +360,252 @@ st.dataframe(
 )
 
 # =========================================================
-# SCORE DISTRIBUTION
+# SECTOR ROTATION
 # =========================================================
 
 st.subheader(
-    "📊 Final Score Distribution"
+    "📊 Sector Rotation"
 )
 
-fig = px.histogram(
-    filtered_df,
-    x="FINAL_SCORE",
-    nbins=30,
-    title="Institutional Score Distribution"
-)
+sector_strength = (
 
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-# =========================================================
-# TOP STOCKS CHART
-# =========================================================
-
-st.subheader(
-    "🚀 Top Institutional Stocks"
-)
-
-chart_df = (
     filtered_df
+
+    .groupby("SECTOR")[
+        "FINAL_SCORE"
+    ]
+
+    .mean()
+
     .sort_values(
-        by="FINAL_SCORE",
         ascending=False
     )
-    .head(20)
-)
 
-fig_top = px.bar(
-    chart_df,
-    x="SYMBOL",
-    y="FINAL_SCORE",
-    color="FINAL_SCORE",
-    title="Top 20 Institutional Stocks"
-)
-
-st.plotly_chart(
-    fig_top,
-    use_container_width=True
-)
-
-# =========================================================
-# SECTOR ANALYTICS
-# =========================================================
-
-st.subheader(
-    "🏭 Sector Strength Analysis"
-)
-
-sector_scores = (
-    filtered_df
-    .groupby("SECTOR")["FINAL_SCORE"]
-    .mean()
-    .sort_values(ascending=False)
-    .head(15)
 )
 
 fig_sector = px.bar(
-    sector_scores,
-    title="Top Sector Scores"
+
+    sector_strength,
+
+    title="Sector Strength",
+
+    height=500
+
 )
 
 st.plotly_chart(
     fig_sector,
     use_container_width=True
 )
+
 # =========================================================
-# MARKET CAP TREEMAP
+# SUBSECTOR STRENGTH
 # =========================================================
 
 st.subheader(
-    "🌐 Market Cap Treemap"
+    "🔥 Subsector Strength"
 )
 
-if (
-    "MARKET_CAP" in filtered_df.columns
-    and
-    "SECTOR" in filtered_df.columns
-):
+subsector_strength = (
 
-    treemap_df = (
-        filtered_df
-        .sort_values(
-            by="MARKET_CAP",
-            ascending=False
-        )
-        .head(100)
+    filtered_df
+
+    .groupby("SUBSECTOR")[
+        "FINAL_SCORE"
+    ]
+
+    .mean()
+
+    .sort_values(
+        ascending=False
     )
 
-    fig_tree = px.treemap(
-        treemap_df,
-        path=["SECTOR", "SYMBOL"],
-        values="MARKET_CAP",
-        color="FINAL_SCORE",
-        hover_data=[
+    .head(25)
+
+)
+
+fig_subsector = px.bar(
+
+    subsector_strength,
+
+    title="Top Subsectors",
+
+    height=600
+
+)
+
+st.plotly_chart(
+    fig_subsector,
+    use_container_width=True
+)
+
+# =========================================================
+# ELITE STOCKS
+# =========================================================
+
+st.subheader(
+    "🏆 Elite Institutional Stocks"
+)
+
+elite_df = filtered_df[
+
+    filtered_df[
+        "ELITE_FLAG"
+    ] == 1
+
+]
+
+st.dataframe(
+
+    elite_df[
+        [
+            "RANK",
+            "SYMBOL",
+            "SECTOR",
+            "SUBSECTOR",
             "FINAL_SCORE",
+            "CONFIDENCE_SCORE",
             "TRADE_DECISION"
         ]
+    ],
+
+    use_container_width=True
+)
+
+# =========================================================
+# COMPOUNDER TRACKER
+# =========================================================
+
+st.subheader(
+    "📈 Compounder Tracker"
+)
+
+compounders = filtered_df[
+
+    filtered_df[
+        "COMPOUNDER_FLAG"
+    ] == 1
+
+]
+
+fig_compounders = px.scatter(
+
+    compounders,
+
+    x="QUALITY_SCORE",
+
+    y="GROWTH_SCORE",
+
+    size="MARKET_CAP",
+
+    color="SECTOR",
+
+    hover_name="SYMBOL",
+
+    title="Compounder Universe"
+
+)
+
+st.plotly_chart(
+    fig_compounders,
+    use_container_width=True
+)
+
+# =========================================================
+# INSTITUTIONAL LEADERSHIP
+# =========================================================
+
+st.subheader(
+    "🚀 Institutional Leadership"
+)
+
+leaders = (
+
+    filtered_df
+
+    .sort_values(
+        by="LEADERSHIP_SCORE",
+        ascending=False
     )
 
-    st.plotly_chart(
-        fig_tree,
-        use_container_width=True
-    )
+    .head(20)
+
+)
+
+st.dataframe(
+
+    leaders[
+        [
+            "SYMBOL",
+            "SECTOR",
+            "SUBSECTOR",
+            "LEADERSHIP_SCORE",
+            "CONFIDENCE_SCORE",
+            "FINAL_SCORE"
+        ]
+    ],
+
+    use_container_width=True
+)
+
 # =========================================================
-# TRADE DECISION BREAKDOWN
+# TREEMAP
+# =========================================================
+
+st.subheader(
+    "🌐 Institutional Market Treemap"
+)
+
+fig_tree = px.treemap(
+
+    filtered_df,
+
+    path=[
+        "SECTOR",
+        "SUBSECTOR",
+        "SYMBOL"
+    ],
+
+    values="MARKET_CAP",
+
+    color="FINAL_SCORE",
+
+    hover_data=[
+        "TRADE_DECISION",
+        "CONFIDENCE_SCORE"
+    ]
+)
+
+st.plotly_chart(
+    fig_tree,
+    use_container_width=True
+)
+
+# =========================================================
+# SCORE DISTRIBUTION
+# =========================================================
+
+st.subheader(
+    "🧠 Institutional Score Distribution"
+)
+
+fig_hist = px.histogram(
+
+    filtered_df,
+
+    x="FINAL_SCORE",
+
+    nbins=40
+
+)
+
+st.plotly_chart(
+    fig_hist,
+    use_container_width=True
+)
+
+# =========================================================
+# TRADE BREAKDOWN
 # =========================================================
 
 st.subheader(
@@ -524,16 +613,23 @@ st.subheader(
 )
 
 trade_counts = (
+
     filtered_df[
         "TRADE_DECISION"
     ]
+
     .value_counts()
+
 )
 
 fig_trade = px.pie(
+
     values=trade_counts.values,
+
     names=trade_counts.index,
+
     title="Trade Decision Distribution"
+
 )
 
 st.plotly_chart(
@@ -542,7 +638,7 @@ st.plotly_chart(
 )
 
 # =========================================================
-# INSTITUTIONAL GRADE
+# INSTITUTIONAL GRADES
 # =========================================================
 
 st.subheader(
@@ -550,60 +646,30 @@ st.subheader(
 )
 
 grade_counts = (
+
     filtered_df[
         "INSTITUTIONAL_GRADE"
     ]
+
     .value_counts()
+
 )
 
 fig_grade = px.bar(
+
     x=grade_counts.index,
+
     y=grade_counts.values,
+
     title="Institutional Grades"
+
 )
 
 st.plotly_chart(
     fig_grade,
     use_container_width=True
 )
-# =========================================================
-# HIGH CONFIDENCE STOCKS
-# =========================================================
 
-st.subheader(
-    "🔥 Highest Confidence Stocks"
-)
-
-confidence_df = (
-    filtered_df
-    .sort_values(
-        by="CONFIDENCE_SCORE",
-        ascending=False
-    )
-    .head(15)
-)
-
-confidence_columns = [
-
-    "SYMBOL",
-    "FINAL_SCORE",
-    "CONFIDENCE_SCORE",
-    "TRADE_DECISION",
-    "SECTOR"
-]
-
-available_confidence_columns = [
-
-    col for col in confidence_columns
-    if col in confidence_df.columns
-]
-
-st.dataframe(
-    confidence_df[
-        available_confidence_columns
-    ],
-    use_container_width=True
-)
 # =========================================================
 # RAW DATA
 # =========================================================
@@ -618,7 +684,7 @@ with st.expander(
     )
 
 # =========================================================
-# DOWNLOADS
+# DOWNLOAD
 # =========================================================
 
 st.subheader(
