@@ -66,6 +66,45 @@ MAX_WORKERS = 8
 REQUEST_DELAY = 0.15
 
 # =====================================================
+# SAFE NUMERIC
+# =====================================================
+
+def safe_numeric(value):
+
+    try:
+
+        if pd.isna(value):
+
+            return np.nan
+
+        value = str(value).strip()
+
+        if value.lower() in [
+
+            "infinity",
+            "-infinity",
+            "inf",
+            "-inf",
+            "nan",
+            "none",
+            "",
+        ]:
+
+            return np.nan
+
+        value = float(value)
+
+        if np.isinf(value):
+
+            return np.nan
+
+        return value
+
+    except Exception:
+
+        return np.nan
+
+# =====================================================
 # LOAD STOCK UNIVERSE
 # =====================================================
 
@@ -96,6 +135,8 @@ def load_stock_universe():
 
             sys.exit(1)
 
+        symbols = []
+
         if "SYMBOL" in df.columns:
 
             symbols = (
@@ -106,8 +147,6 @@ def load_stock_universe():
             )
 
         elif "YFINANCE_URL" in df.columns:
-
-            symbols = []
 
             for url in (
                 df["YFINANCE_URL"]
@@ -127,15 +166,6 @@ def load_stock_universe():
                 except Exception:
 
                     continue
-
-        else:
-
-            print(
-                "ERROR: Missing "
-                "SYMBOL/YFINANCE_URL"
-            )
-
-            sys.exit(1)
 
         cleaned_symbols = []
 
@@ -168,46 +198,12 @@ def load_stock_universe():
     except Exception as e:
 
         print(
-            f"Universe loading error: "
-            f"{e}"
+            f"Universe loading error: {e}"
         )
 
         traceback.print_exc()
 
         sys.exit(1)
-
-# =====================================================
-# SAFE NUMERIC
-# =====================================================
-
-def safe_numeric(value):
-
-    try:
-
-        if str(value).strip().lower() in [
-
-            "infinity",
-            "-infinity",
-            "inf",
-            "-inf",
-            "nan",
-            "none",
-            "",
-        ]:
-
-            return np.nan
-
-        value = float(value)
-
-        if np.isinf(value):
-
-            return np.nan
-
-        return value
-
-    except Exception:
-
-        return np.nan
 
 # =====================================================
 # FETCH FUNDAMENTALS
@@ -241,7 +237,7 @@ def fetch_fundamentals(symbol):
                 market_cap = (
                     info.get(
                         "marketCap",
-                        0
+                        np.nan
                     )
                 )
 
@@ -257,9 +253,16 @@ def fetch_fundamentals(symbol):
                 current_price = (
                     info.get(
                         "currentPrice",
-                        0
+                        np.nan
                     )
                 )
+
+            trailing_pe = safe_numeric(
+                info.get(
+                    "trailingPE",
+                    np.nan
+                )
+            )
 
             data = {
 
@@ -284,39 +287,8 @@ def fetch_fundamentals(symbol):
                         current_price
                     ),
 
-                # =====================================
-                # HARD FIX FOR PE_RATIO
-                # =====================================
-
                 "PE_RATIO":
-                    (
-                        np.nan
-
-                        if str(
-                            info.get(
-                                "trailingPE",
-                                np.nan
-                            )
-                        ).strip().lower()
-
-                        in [
-                            "infinity",
-                            "-infinity",
-                            "inf",
-                            "-inf",
-                            "nan",
-                            "none",
-                            "",
-                        ]
-
-                        else pd.to_numeric(
-                            info.get(
-                                "trailingPE",
-                                np.nan
-                            ),
-                            errors="coerce"
-                        )
-                    ),
+                    trailing_pe,
 
                 "PRICE_TO_BOOK":
                     safe_numeric(
@@ -418,20 +390,88 @@ def fetch_fundamentals(symbol):
                 f"{error_msg}"
             )
 
-            if (
-                "Too Many Requests"
-                in error_msg
-            ):
-
-                time.sleep(8)
-
-            else:
-
-                time.sleep(2)
+            time.sleep(2)
 
     print(f"FAILED: {symbol}")
 
     return None
+
+# =====================================================
+# FINAL DATAFRAME CLEANING
+# =====================================================
+
+def clean_dataframe(df):
+
+    INVALID_VALUES = [
+
+        "Infinity",
+        "-Infinity",
+        "inf",
+        "-inf",
+        "INF",
+        "-INF",
+        "NaN",
+        "nan",
+        "None",
+        "none",
+        "",
+        "NULL",
+        "null",
+    ]
+
+    df = df.replace(
+        INVALID_VALUES,
+        np.nan
+    )
+
+    df = df.replace(
+        [np.inf, -np.inf],
+        np.nan
+    )
+
+    NUMERIC_COLUMNS = [
+
+        "MARKET_CAP",
+        "CURRENT_PRICE",
+        "PE_RATIO",
+        "PRICE_TO_BOOK",
+        "ROE",
+        "DEBT_TO_EQUITY",
+        "OPERATING_MARGIN",
+        "PROFIT_MARGIN",
+        "REVENUE_GROWTH",
+        "EARNINGS_GROWTH",
+    ]
+
+    for col in NUMERIC_COLUMNS:
+
+        if col in df.columns:
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            )
+
+            df[col] = (
+                df[col]
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan
+                )
+                .astype("float64")
+            )
+
+    for col in df.columns:
+
+        if df[col].dtype == "object":
+
+            df[col] = (
+                df[col]
+                .fillna("")
+                .astype(str)
+            )
+
+    return df
 
 # =====================================================
 # MAIN
@@ -519,8 +559,7 @@ def main():
 
                 print(
                     f"ERROR: "
-                    f"{stock_symbol} -> "
-                    f"{e}"
+                    f"{stock_symbol} -> {e}"
                 )
 
                 failed += 1
@@ -543,88 +582,9 @@ def main():
         "\nApplying dataframe cleaning..."
     )
 
-    INVALID_VALUES = [
-
-        "Infinity",
-        "-Infinity",
-        "inf",
-        "-inf",
-        "INF",
-        "-INF",
-        "NaN",
-        "nan",
-        "None",
-        "none",
-        "NULL",
-        "null",
-        "",
-    ]
-
-    df = df.replace(
-        INVALID_VALUES,
-        np.nan
-    )
-
-    df = df.replace(
-        [np.inf, -np.inf],
-        np.nan
-    )
-
-    NUMERIC_COLUMNS = [
-
-        "MARKET_CAP",
-        "CURRENT_PRICE",
-        "PE_RATIO",
-        "PRICE_TO_BOOK",
-        "ROE",
-        "DEBT_TO_EQUITY",
-        "OPERATING_MARGIN",
-        "PROFIT_MARGIN",
-        "REVENUE_GROWTH",
-        "EARNINGS_GROWTH",
-    ]
-
-    for col in NUMERIC_COLUMNS:
-
-        if col in df.columns:
-
-            df[col] = pd.to_numeric(
-                df[col],
-                errors="coerce"
-            )
-
-            df[col] = (
-                df[col]
-                .replace(
-                    [np.inf, -np.inf],
-                    np.nan
-                )
-                .astype("float64")
-            )
-
-    for col in df.columns:
-
-        if df[col].dtype == "object":
-
-            df[col] = (
-                df[col]
-                .fillna("")
-                .astype(str)
-            )
+    df = clean_dataframe(df)
 
     df = df.drop_duplicates()
-
-    if "MARKET_CAP" in df.columns:
-
-        df = df[
-            df["MARKET_CAP"].fillna(0) > 0
-        ]
-
-    if "CURRENT_PRICE" in df.columns:
-
-        df = df[
-            df["CURRENT_PRICE"].fillna(0) > 0
-        ]
 
     os.makedirs(
         "data/financials",
@@ -653,33 +613,16 @@ def main():
         )
 
         # ==========================================
-        # FINAL HARD TYPE ENFORCEMENT
+        # FINAL PARQUET SAFETY
         # ==========================================
-
-        for col in df.columns:
-
-            try:
-
-                converted = pd.to_numeric(
-                    df[col],
-                    errors="ignore"
-                )
-
-                df[col] = converted
-
-            except Exception:
-
-                pass
 
         if "PE_RATIO" in df.columns:
 
-            df["PE_RATIO"] = pd.to_numeric(
-                df["PE_RATIO"],
-                errors="coerce"
-            )
-
             df["PE_RATIO"] = (
-                df["PE_RATIO"]
+                pd.to_numeric(
+                    df["PE_RATIO"],
+                    errors="coerce"
+                )
                 .replace(
                     [np.inf, -np.inf],
                     np.nan
@@ -687,25 +630,17 @@ def main():
                 .astype("float64")
             )
 
-        for col in df.select_dtypes(
-            include=["object"]
-        ).columns:
-
-            df[col] = (
-                df[col]
-                .astype(str)
-                .replace(
-                    [
-                        "Infinity",
-                        "-Infinity",
-                        "inf",
-                        "-inf",
-                        "nan",
-                        "None",
-                    ],
-                    ""
-                )
-            )
+        df = df.replace(
+            [
+                "Infinity",
+                "-Infinity",
+                "inf",
+                "-inf",
+                "INF",
+                "-INF",
+            ],
+            np.nan
+        )
 
         print("\nFINAL DTYPES:\n")
 
@@ -729,7 +664,7 @@ def main():
     except Exception as e:
 
         print(
-            f"Save error: {e}"
+            f"\nSave error: {e}"
         )
 
         traceback.print_exc()
