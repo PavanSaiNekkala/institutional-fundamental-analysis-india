@@ -1,262 +1,362 @@
-import pandas as pd
-import numpy as np
+import os
+import sys
 import traceback
 import warnings
-import sys
-from pathlib import Path
+
+import pandas as pd
+import numpy as np
 
 warnings.filterwarnings("ignore")
 
-# =====================================
-# FILE PATHS
-# =====================================
+# =====================================================
+# PROJECT ROOT FIX
+# =====================================================
 
-PARQUET_INPUT = (
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        ".."
+    )
+)
+
+if PROJECT_ROOT not in sys.path:
+
+    sys.path.insert(
+        0,
+        PROJECT_ROOT
+    )
+
+# =====================================================
+# INPUT / OUTPUT
+# =====================================================
+
+INPUT_FILE = (
     "data/cache/parquet/"
     "cleaned_fundamentals.parquet"
 )
 
-CSV_OUTPUT = (
+OUTPUT_CSV = (
     "data/scored/"
     "growth_scored.csv"
 )
 
-PARQUET_OUTPUT = (
+OUTPUT_PARQUET = (
     "data/cache/parquet/"
     "growth_scored.parquet"
 )
 
-# =====================================
-# GROWTH SCORE FUNCTION
-# =====================================
+# =====================================================
+# LOAD DATA
+# =====================================================
 
-def calculate_growth_score(row):
-
-    score = 0
+def load_dataset():
 
     try:
 
-        revenue_growth = row.get(
-            "REVENUE_GROWTH",
-            0
+        if not os.path.exists(INPUT_FILE):
+
+            print(
+                f"ERROR: Missing -> "
+                f"{INPUT_FILE}"
+            )
+
+            sys.exit(1)
+
+        print(
+            "\nLoading cleaned fundamentals..."
         )
 
-        earnings_growth = row.get(
-            "EARNINGS_GROWTH",
-            0
+        df = pd.read_parquet(INPUT_FILE)
+
+        if df.empty:
+
+            print(
+                "ERROR: Empty dataset"
+            )
+
+            sys.exit(1)
+
+        print(
+            f"Loaded "
+            f"{len(df)} rows"
         )
 
-        roe = row.get(
-            "ROE",
-            0
+        return df
+
+    except Exception as e:
+
+        print(
+            f"Load error: {e}"
         )
 
-        operating_margin = row.get(
-            "OPERATING_MARGIN",
-            0
+        traceback.print_exc()
+
+        sys.exit(1)
+
+# =====================================================
+# SAFE NUMERIC CONVERSION
+# =====================================================
+
+def safe_numeric(df, columns):
+
+    for col in columns:
+
+        if col in df.columns:
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            )
+
+    return df
+
+# =====================================================
+# PERCENTILE SCORING
+# =====================================================
+
+def percentile_score(series):
+
+    return (
+
+        series.rank(
+            pct=True
+        ) * 100
+
+    ).round(2)
+
+# =====================================================
+# GROWTH SCORING
+# =====================================================
+
+def calculate_growth_score(df):
+
+    # ==============================================
+    # REQUIRED COLUMNS
+    # ==============================================
+
+    growth_columns = [
+
+        "REVENUE_GROWTH",
+        "EARNINGS_GROWTH",
+        "ROE",
+        "OPERATING_MARGIN"
+
+    ]
+
+    df = safe_numeric(
+        df,
+        growth_columns
+    )
+
+    # ==============================================
+    # CLEAN NEGATIVE EXTREMES
+    # ==============================================
+
+    for col in growth_columns:
+
+        if col in df.columns:
+
+            lower = df[col].quantile(0.01)
+
+            upper = df[col].quantile(0.99)
+
+            df[col] = np.clip(
+                df[col],
+                lower,
+                upper
+            )
+
+    # ==============================================
+    # PERCENTILE SCORES
+    # ==============================================
+
+    df["REVENUE_GROWTH_SCORE"] = (
+
+        percentile_score(
+            df["REVENUE_GROWTH"]
         )
 
-        # ---------------------------------
-        # REVENUE GROWTH
-        # ---------------------------------
+    )
 
-        if revenue_growth > 0.30:
-            score += 30
+    df["EARNINGS_GROWTH_SCORE"] = (
 
-        elif revenue_growth > 0.20:
-            score += 20
+        percentile_score(
+            df["EARNINGS_GROWTH"]
+        )
 
-        elif revenue_growth > 0.10:
-            score += 10
+    )
 
-        # ---------------------------------
-        # EARNINGS GROWTH
-        # ---------------------------------
+    df["ROE_SCORE"] = (
 
-        if earnings_growth > 0.30:
-            score += 30
+        percentile_score(
+            df["ROE"]
+        )
 
-        elif earnings_growth > 0.20:
-            score += 20
+    )
 
-        elif earnings_growth > 0.10:
-            score += 10
+    df["OPERATING_MARGIN_SCORE"] = (
 
-        # ---------------------------------
-        # ROE
-        # ---------------------------------
+        percentile_score(
+            df["OPERATING_MARGIN"]
+        )
 
-        if roe > 0.20:
-            score += 20
+    )
 
-        elif roe > 0.15:
-            score += 10
+    # ==============================================
+    # GROWTH STABILITY
+    # ==============================================
 
-        # ---------------------------------
-        # OPERATING MARGIN
-        # ---------------------------------
+    df["GROWTH_STABILITY_SCORE"] = (
 
-        if operating_margin > 0.20:
-            score += 20
+        (
+            df["REVENUE_GROWTH_SCORE"]
+            +
+            df["EARNINGS_GROWTH_SCORE"]
+        ) / 2
 
-        elif operating_margin > 0.10:
-            score += 10
+    )
 
-    except Exception:
+    # ==============================================
+    # FINAL GROWTH SCORE
+    # ==============================================
 
-        return 0
+    df["GROWTH_SCORE"] = (
 
-    return score
+        (
+            df["REVENUE_GROWTH_SCORE"]
+            * 0.35
+        )
 
-# =====================================
-# MAIN
-# =====================================
+        +
+
+        (
+            df["EARNINGS_GROWTH_SCORE"]
+            * 0.35
+        )
+
+        +
+
+        (
+            df["ROE_SCORE"]
+            * 0.20
+        )
+
+        +
+
+        (
+            df["OPERATING_MARGIN_SCORE"]
+            * 0.10
+        )
+
+    ).round(2)
+
+    return df
+
+# =====================================================
+# GROWTH CATEGORY
+# =====================================================
+
+def assign_growth_category(score):
+
+    if score >= 85:
+
+        return "ELITE GROWTH"
+
+    elif score >= 70:
+
+        return "HIGH GROWTH"
+
+    elif score >= 55:
+
+        return "MODERATE GROWTH"
+
+    elif score >= 40:
+
+        return "SLOW GROWTH"
+
+    return "WEAK GROWTH"
+
+# =====================================================
+# MAIN PIPELINE
+# =====================================================
 
 def main():
 
     print("=" * 60)
 
     print(
-        "GROWTH SCORING ENGINE"
+        "INSTITUTIONAL GROWTH "
+        "SCORING ENGINE"
     )
 
     print("=" * 60)
 
-    # ---------------------------------
-    # FILE CHECK
-    # ---------------------------------
-
-    input_path = Path(
-        PARQUET_INPUT
-    )
-
-    if not input_path.exists():
-
-        print(
-            f"ERROR: Missing input parquet -> "
-            f"{PARQUET_INPUT}"
-        )
-
-        sys.exit(1)
-
-    # ---------------------------------
+    # =================================================
     # LOAD DATA
-    # ---------------------------------
+    # =================================================
 
-    try:
+    df = load_dataset()
 
-        print(
-            "\nLoading parquet data..."
-        )
+    # =================================================
+    # CALCULATE SCORES
+    # =================================================
 
-        df = pd.read_parquet(
-            PARQUET_INPUT
-        )
+    df = calculate_growth_score(df)
 
-    except Exception as e:
+    # =================================================
+    # GROWTH CATEGORY
+    # =================================================
 
-        print(
-            f"ERROR loading parquet: "
-            f"{e}"
-        )
+    df["GROWTH_CATEGORY"] = (
 
-        traceback.print_exc()
+        df["GROWTH_SCORE"]
 
-        sys.exit(1)
+        .apply(assign_growth_category)
 
-    if df.empty:
-
-        print(
-            "ERROR: Empty dataset"
-        )
-
-        sys.exit(1)
-
-    print(
-        f"\nLoaded {len(df)} rows"
     )
 
-    # ---------------------------------
-    # CLEAN DATA
-    # ---------------------------------
-
-    df = df.replace(
-        [np.inf, -np.inf],
-        np.nan
-    )
-
-    df = df.fillna(0)
-
-    # ---------------------------------
-    # CALCULATE GROWTH SCORE
-    # ---------------------------------
-
-    print(
-        "\nCalculating growth scores..."
-    )
-
-    df["GROWTH_SCORE"] = df.apply(
-        calculate_growth_score,
-        axis=1
-    )
-
-    # ---------------------------------
-    # SORT
-    # ---------------------------------
+    # =================================================
+    # FINAL SORT
+    # =================================================
 
     df = df.sort_values(
+
         by="GROWTH_SCORE",
+
         ascending=False
     )
 
-    # ---------------------------------
+    # =================================================
     # CREATE OUTPUT DIRS
-    # ---------------------------------
+    # =================================================
 
-    Path(
-        "data/scored"
-    ).mkdir(
-        parents=True,
+    os.makedirs(
+        "data/scored",
         exist_ok=True
     )
 
-    Path(
-        "data/cache/parquet"
-    ).mkdir(
-        parents=True,
+    os.makedirs(
+        "data/cache/parquet",
         exist_ok=True
     )
 
-    # ---------------------------------
+    # =================================================
     # SAVE OUTPUTS
-    # ---------------------------------
+    # =================================================
 
-    try:
+    df.to_csv(
+        OUTPUT_CSV,
+        index=False
+    )
 
-        df.to_csv(
-            CSV_OUTPUT,
-            index=False
-        )
+    df.to_parquet(
+        OUTPUT_PARQUET,
+        index=False
+    )
 
-        df.to_parquet(
-            PARQUET_OUTPUT,
-            index=False
-        )
-
-    except Exception as e:
-
-        print(
-            f"ERROR saving outputs: "
-            f"{e}"
-        )
-
-        traceback.print_exc()
-
-        sys.exit(1)
-
-    # ---------------------------------
+    # =================================================
     # SUMMARY
-    # ---------------------------------
+    # =================================================
 
     print("\n" + "=" * 60)
 
@@ -272,13 +372,43 @@ def main():
     )
 
     print(
-        f"\nParquet Saved To:\n"
-        f"{PARQUET_OUTPUT}"
+        f"\nCSV Saved:\n"
+        f"{OUTPUT_CSV}"
     )
 
-# =====================================
-# ENTRY
-# =====================================
+    print(
+        f"\nParquet Saved:\n"
+        f"{OUTPUT_PARQUET}"
+    )
+
+    print(
+        "\nGrowth Category Distribution:\n"
+    )
+
+    print(
+        df["GROWTH_CATEGORY"]
+        .value_counts()
+    )
+
+    print("\nTop Growth Stocks:\n")
+
+    print(
+
+        df[
+            [
+                "SYMBOL",
+                "GROWTH_SCORE",
+                "GROWTH_CATEGORY"
+            ]
+        ]
+
+        .head(15)
+
+    )
+
+# =====================================================
+# ENTRY POINT
+# =====================================================
 
 if __name__ == "__main__":
 
@@ -289,7 +419,7 @@ if __name__ == "__main__":
     except Exception as e:
 
         print(
-            "\nFATAL GROWTH ENGINE ERROR"
+            "\nFATAL GROWTH SCORING ERROR"
         )
 
         print(str(e))
