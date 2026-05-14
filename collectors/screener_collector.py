@@ -216,7 +216,13 @@ def safe_numeric(value):
 
             return np.nan
 
-        return float(value)
+        value = float(value)
+
+        if np.isinf(value):
+
+            return np.nan
+
+        return value
 
     except Exception:
 
@@ -620,25 +626,14 @@ def main():
             )
 
     # =================================================
-    # FORCE TEXT TYPES
+    # FORCE OBJECT COLUMNS TO STRING
     # =================================================
 
-    TEXT_COLUMNS = [
+    for col in df.columns:
 
-        "SYMBOL",
-        "SECTOR",
-        "RAW_SECTOR",
-        "INDUSTRY",
-        "MARKET_CAP_CATEGORY",
-        "FETCH_DATE",
-    ]
-
-    for col in TEXT_COLUMNS:
-
-        if col in df.columns:
+        if df[col].dtype == "object":
 
             df[col] = (
-
                 df[col]
                 .fillna("")
                 .astype(str)
@@ -664,12 +659,6 @@ def main():
 
         df = df[
             df["CURRENT_PRICE"].fillna(0) > 0
-        ]
-
-    if "SYMBOL" in df.columns:
-
-        df = df[
-            df["SYMBOL"].notna()
         ]
 
     # =================================================
@@ -707,52 +696,37 @@ def main():
         )
 
         # =================================================
-        # FINAL ULTRA SAFE PARQUET CLEANING
+        # FINAL ULTRA SAFE PARQUET FIX
         # =================================================
 
         print(
-            "\nApplying final parquet safety cleaning..."
+            "\nApplying ultra safe parquet cleaning..."
         )
 
-        df = df.replace(
-            INVALID_VALUES,
-            np.nan
-        )
-
-        df = df.replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
-
-        # Force numeric conversion again
         for col in NUMERIC_COLUMNS:
 
             if col in df.columns:
 
                 df[col] = (
-
                     pd.to_numeric(
                         df[col],
                         errors="coerce"
                     )
-
                     .replace(
                         [np.inf, -np.inf],
                         np.nan
                     )
+                    .astype("float64")
                 )
 
-        # Force object columns safely
         for col in df.columns:
 
             if df[col].dtype == "object":
 
                 df[col] = (
-
                     df[col]
                     .fillna("")
                     .astype(str)
-
                     .replace(
                         [
                             "Infinity",
@@ -815,10 +789,6 @@ def main():
             index=False
         )
 
-        print(
-            "\nFailed symbols exported"
-        )
-
     # =================================================
     # SUMMARY
     # =================================================
@@ -867,10 +837,6 @@ def main():
         f"\nParquet:\n"
         f"{PARQUET_OUTPUT}"
     )
-
-    print("\nSample Data:\n")
-
-    print(df.head())
 
 # =====================================================
 # ENTRY POINT
