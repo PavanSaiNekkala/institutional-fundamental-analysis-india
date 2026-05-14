@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import random
 import traceback
 import warnings
 from datetime import datetime
@@ -58,9 +59,13 @@ FAILED_OUTPUT = (
     "failed_symbols.csv"
 )
 
-MAX_STOCKS = 3000
-MAX_WORKERS = 8
-REQUEST_DELAY = 0.15
+# =========================================================
+# STABLE SETTINGS
+# =========================================================
+
+MAX_STOCKS = 1200
+MAX_WORKERS = 2
+REQUEST_DELAY = 1.2
 
 # =========================================================
 # SAFE NUMERIC
@@ -139,6 +144,7 @@ def load_stock_universe():
     if "SYMBOL" in df.columns:
 
         symbols = (
+
             df["SYMBOL"]
             .dropna()
             .astype(str)
@@ -148,16 +154,20 @@ def load_stock_universe():
     elif "YFINANCE_URL" in df.columns:
 
         for url in (
+
             df["YFINANCE_URL"]
             .dropna()
             .astype(str)
+
         ):
 
             try:
 
                 symbol = (
+
                     url.split("/quote/")[1]
                     .split("?")[0]
+
                 )
 
                 symbols.append(symbol)
@@ -189,45 +199,80 @@ def load_stock_universe():
     return cleaned
 
 # =========================================================
-# FETCH SINGLE STOCK
+# FETCH FUNDAMENTALS
 # =========================================================
 
 def fetch_fundamentals(symbol):
 
-    retries = 3
+    retries = 5
 
     for attempt in range(retries):
 
         try:
 
-            time.sleep(REQUEST_DELAY)
+            # =====================================
+            # RANDOMIZED DELAY
+            # =====================================
+
+            sleep_time = (
+
+                REQUEST_DELAY
+                + random.uniform(0.5, 2.0)
+                + (attempt * 1.5)
+
+            )
+
+            time.sleep(sleep_time)
+
+            # =====================================
+            # FETCH
+            # =====================================
 
             stock = yf.Ticker(symbol)
 
             info = stock.info
+
+            if not info:
+
+                raise Exception(
+                    "Empty response"
+                )
+
             fast_info = stock.fast_info
 
             market_cap = (
+
                 fast_info.get("market_cap")
                 or info.get("marketCap")
+
             )
 
             current_price = (
+
                 fast_info.get("lastPrice")
                 or info.get("currentPrice")
+
             )
+
+            # =====================================
+            # BUILD DATA
+            # =====================================
 
             data = {
 
                 "SYMBOL":
-                    symbol.replace(".NS", ""),
+                    str(
+                        symbol.replace(".NS", "")
+                    ),
 
                 "MARKET_CAP":
                     safe_numeric(market_cap),
 
                 "MARKET_CAP_CATEGORY":
-                    classify_market_cap(
-                        market_cap
+                    str(
+                        classify_market_cap(
+                            market_cap
+                        )
                     ),
 
                 "CURRENT_PRICE":
@@ -302,17 +347,81 @@ def fetch_fundamentals(symbol):
                     .strftime("%Y-%m-%d")
             }
 
+            # =====================================
+            # HARD CLEAN
+            # =====================================
+
+            invalids = [
+
+                "Infinity",
+                "-Infinity",
+                "inf",
+                "-inf",
+                "INF",
+                "-INF",
+                "NaN",
+                "nan",
+                "None",
+                "none",
+                "",
+                "NULL",
+                "null",
+            ]
+
+            for key, value in data.items():
+
+                if isinstance(value, str):
+
+                    value = value.strip()
+
+                    if value in invalids:
+
+                        data[key] = np.nan
+
             return data
 
         except Exception as e:
 
+            error_msg = str(e)
+
             print(
+
                 f"Retry "
-                f"{attempt + 1}/3 "
-                f"{symbol}: {e}"
+                f"{attempt + 1}/{retries} "
+                f"for {symbol}: "
+                f"{error_msg}"
+
             )
 
-            time.sleep(2)
+            # =====================================
+            # RATE LIMIT HANDLING
+            # =====================================
+
+            if (
+
+                "401" in error_msg
+                or "429" in error_msg
+
+            ):
+
+                cooldown = (
+                    15 + (attempt * 10)
+                )
+
+                print(
+
+                    f"Rate limited "
+                    f"{symbol}. "
+                    f"Sleeping "
+                    f"{cooldown}s..."
+
+                )
+
+                time.sleep(cooldown)
+
+            else:
+
+                time.sleep(3)
 
     print(f"FAILED: {symbol}")
 
@@ -343,10 +452,6 @@ def clean_dataframe(df):
         "null",
     ]
 
-    # =====================================================
-    # GLOBAL CLEAN
-    # =====================================================
-
     df = df.replace(
         INVALID_VALUES,
         np.nan
@@ -356,10 +461,6 @@ def clean_dataframe(df):
         [np.inf, -np.inf],
         np.nan
     )
-
-    # =====================================================
-    # NUMERIC COLUMNS
-    # =====================================================
 
     NUMERIC_COLUMNS = [
 
@@ -387,17 +488,15 @@ def clean_dataframe(df):
             )
 
             df[col] = (
+
                 df[col]
                 .replace(
                     [np.inf, -np.inf],
                     np.nan
                 )
                 .astype("float64")
-            )
 
-    # =====================================================
-    # STRING COLUMNS ONLY
-    # =====================================================
+            )
 
     STRING_COLUMNS = [
 
@@ -414,9 +513,11 @@ def clean_dataframe(df):
         if col in df.columns:
 
             df[col] = (
+
                 df[col]
                 .fillna("")
                 .astype(str)
+
             )
 
     print("\nFINAL DTYPES:\n")
@@ -551,48 +652,72 @@ def main():
             "\nFinal parquet validation..."
         )
 
-        # =========================================
+        # =====================================
         # FINAL HARD CLEAN
-        # =========================================
+        # =====================================
+
+        INVALID_VALUES = [
+
+            "Infinity",
+            "-Infinity",
+            "inf",
+            "-inf",
+            "INF",
+            "-INF",
+            "NaN",
+            "nan",
+            "None",
+            "none",
+            "",
+            "NULL",
+            "null",
+        ]
 
         df = df.replace(
-
-            [
-                "Infinity",
-                "-Infinity",
-                "inf",
-                "-inf",
-                "INF",
-                "-INF",
-            ],
-
+            INVALID_VALUES,
             np.nan
         )
 
-        if "PE_RATIO" in df.columns:
+        df = df.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
 
-            df["PE_RATIO"] = (
+        NUMERIC_COLUMNS = [
 
-                pd.to_numeric(
-                    df["PE_RATIO"],
+            "MARKET_CAP",
+            "CURRENT_PRICE",
+            "PE_RATIO",
+            "PRICE_TO_BOOK",
+            "ROE",
+            "DEBT_TO_EQUITY",
+            "OPERATING_MARGIN",
+            "PROFIT_MARGIN",
+            "REVENUE_GROWTH",
+            "EARNINGS_GROWTH",
+        ]
+
+        for col in NUMERIC_COLUMNS:
+
+            if col in df.columns:
+
+                df[col] = pd.to_numeric(
+                    df[col],
                     errors="coerce"
                 )
 
-                .replace(
-                    [np.inf, -np.inf],
-                    np.nan
+                df[col] = (
+
+                    df[col]
+                    .replace(
+                        [np.inf, -np.inf],
+                        np.nan
+                    )
+                    .astype("float64")
+
                 )
 
-                .astype("float64")
-            )
-
-        print("\nPE_RATIO dtype:")
-
-        print(df["PE_RATIO"].dtype)
-
-        print(
-            "\nSaving parquet dataset..."
-        )
+        print("\nSaving parquet dataset...")
 
         df.to_parquet(
             PARQUET_OUTPUT,
