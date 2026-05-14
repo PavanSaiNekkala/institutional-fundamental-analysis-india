@@ -65,7 +65,7 @@ FAILED_OUTPUT = (
 # PERFORMANCE SETTINGS
 # =====================================================
 
-MAX_STOCKS = 1200
+MAX_STOCKS = 3000
 
 MAX_WORKERS = 8
 
