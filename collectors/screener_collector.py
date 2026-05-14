@@ -61,10 +61,6 @@ FAILED_OUTPUT = (
     "failed_symbols.csv"
 )
 
-# =====================================================
-# PERFORMANCE SETTINGS
-# =====================================================
-
 MAX_STOCKS = 3000
 MAX_WORKERS = 8
 REQUEST_DELAY = 0.15
@@ -100,10 +96,6 @@ def load_stock_universe():
 
             sys.exit(1)
 
-        # =============================================
-        # SYMBOL COLUMN
-        # =============================================
-
         if "SYMBOL" in df.columns:
 
             symbols = (
@@ -112,10 +104,6 @@ def load_stock_universe():
                 .astype(str)
                 .tolist()
             )
-
-        # =============================================
-        # URL COLUMN
-        # =============================================
 
         elif "YFINANCE_URL" in df.columns:
 
@@ -148,10 +136,6 @@ def load_stock_universe():
             )
 
             sys.exit(1)
-
-        # =============================================
-        # CLEAN SYMBOLS
-        # =============================================
 
         cleaned_symbols = []
 
@@ -193,24 +177,21 @@ def load_stock_universe():
         sys.exit(1)
 
 # =====================================================
-# SAFE VALUE CLEANER
+# SAFE NUMERIC
 # =====================================================
 
 def safe_numeric(value):
 
     try:
 
-        if value in [
+        if str(value).strip().lower() in [
 
-            "Infinity",
-            "-Infinity",
+            "infinity",
+            "-infinity",
             "inf",
             "-inf",
-            "INF",
-            "-INF",
-            "NaN",
             "nan",
-            None,
+            "none",
             "",
         ]:
 
@@ -248,10 +229,6 @@ def fetch_fundamentals(symbol):
 
             info = stock.info
 
-            # =========================================
-            # MARKET CAP
-            # =========================================
-
             market_cap = (
                 fast_info.get(
                     "market_cap",
@@ -268,10 +245,6 @@ def fetch_fundamentals(symbol):
                     )
                 )
 
-            # =========================================
-            # CURRENT PRICE
-            # =========================================
-
             current_price = (
                 fast_info.get(
                     "lastPrice",
@@ -287,10 +260,6 @@ def fetch_fundamentals(symbol):
                         0
                     )
                 )
-
-            # =========================================
-            # FINAL DATA
-            # =========================================
 
             data = {
 
@@ -315,11 +284,37 @@ def fetch_fundamentals(symbol):
                         current_price
                     ),
 
+                # =====================================
+                # HARD FIX FOR PE_RATIO
+                # =====================================
+
                 "PE_RATIO":
-                    safe_numeric(
-                        info.get(
-                            "trailingPE",
-                            np.nan
+                    (
+                        np.nan
+
+                        if str(
+                            info.get(
+                                "trailingPE",
+                                np.nan
+                            )
+                        ).strip().lower()
+
+                        in [
+                            "infinity",
+                            "-infinity",
+                            "inf",
+                            "-inf",
+                            "nan",
+                            "none",
+                            "",
+                        ]
+
+                        else pd.to_numeric(
+                            info.get(
+                                "trailingPE",
+                                np.nan
+                            ),
+                            errors="coerce"
                         )
                     ),
 
@@ -462,11 +457,6 @@ def main():
         f"{len(stocks)}"
     )
 
-    print(
-        f"Workers: "
-        f"{MAX_WORKERS}"
-    )
-
     all_data = []
     failed_symbols = []
 
@@ -474,10 +464,6 @@ def main():
     failed = 0
 
     start_time = time.time()
-
-    # =================================================
-    # PARALLEL EXECUTION
-    # =================================================
 
     with ThreadPoolExecutor(
         max_workers=MAX_WORKERS
@@ -543,24 +529,15 @@ def main():
                     stock_symbol
                 )
 
-    # =================================================
-    # DATAFRAME
-    # =================================================
-
     df = pd.DataFrame(all_data)
 
     if df.empty:
 
         print(
-            "\nERROR: "
-            "No data collected"
+            "\nERROR: No data collected"
         )
 
         sys.exit(1)
-
-    # =================================================
-    # GLOBAL CLEANING
-    # =================================================
 
     print(
         "\nApplying dataframe cleaning..."
@@ -593,10 +570,6 @@ def main():
         np.nan
     )
 
-    # =================================================
-    # FORCE NUMERIC TYPES
-    # =================================================
-
     NUMERIC_COLUMNS = [
 
         "MARKET_CAP",
@@ -620,14 +593,14 @@ def main():
                 errors="coerce"
             )
 
-            df[col] = df[col].replace(
-                [np.inf, -np.inf],
-                np.nan
+            df[col] = (
+                df[col]
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan
+                )
+                .astype("float64")
             )
-
-    # =================================================
-    # FORCE OBJECT COLUMNS TO STRING
-    # =================================================
 
     for col in df.columns:
 
@@ -639,15 +612,7 @@ def main():
                 .astype(str)
             )
 
-    # =================================================
-    # REMOVE DUPLICATES
-    # =================================================
-
     df = df.drop_duplicates()
-
-    # =================================================
-    # VALIDATION FILTERS
-    # =================================================
 
     if "MARKET_CAP" in df.columns:
 
@@ -660,10 +625,6 @@ def main():
         df = df[
             df["CURRENT_PRICE"].fillna(0) > 0
         ]
-
-    # =================================================
-    # CREATE DIRECTORIES
-    # =================================================
 
     os.makedirs(
         "data/financials",
@@ -680,10 +641,6 @@ def main():
         exist_ok=True
     )
 
-    # =================================================
-    # SAVE OUTPUTS
-    # =================================================
-
     try:
 
         print(
@@ -695,54 +652,62 @@ def main():
             index=False
         )
 
-        # =================================================
-        # FINAL ULTRA SAFE PARQUET FIX
-        # =================================================
-
-        print(
-            "\nApplying ultra safe parquet cleaning..."
-        )
-
-        for col in NUMERIC_COLUMNS:
-
-            if col in df.columns:
-
-                df[col] = (
-                    pd.to_numeric(
-                        df[col],
-                        errors="coerce"
-                    )
-                    .replace(
-                        [np.inf, -np.inf],
-                        np.nan
-                    )
-                    .astype("float64")
-                )
+        # ==========================================
+        # FINAL HARD TYPE ENFORCEMENT
+        # ==========================================
 
         for col in df.columns:
 
-            if df[col].dtype == "object":
+            try:
 
-                df[col] = (
-                    df[col]
-                    .fillna("")
-                    .astype(str)
-                    .replace(
-                        [
-                            "Infinity",
-                            "-Infinity",
-                            "inf",
-                            "-inf",
-                            "nan",
-                            "None",
-                        ],
-                        ""
-                    )
+                converted = pd.to_numeric(
+                    df[col],
+                    errors="ignore"
                 )
 
-        print(
-            "\nColumn Types:\n"
-        )
+                df[col] = converted
+
+            except Exception:
+
+                pass
+
+        if "PE_RATIO" in df.columns:
+
+            df["PE_RATIO"] = pd.to_numeric(
+                df["PE_RATIO"],
+                errors="coerce"
+            )
+
+            df["PE_RATIO"] = (
+                df["PE_RATIO"]
+                .replace(
+                    [np.inf, -np.inf],
+                    np.nan
+                )
+                .astype("float64")
+            )
+
+        for col in df.select_dtypes(
+            include=["object"]
+        ).columns:
+
+            df[col] = (
+                df[col]
+                .astype(str)
+                .replace(
+                    [
+                        "Infinity",
+                        "-Infinity",
+                        "inf",
+                        "-inf",
+                        "nan",
+                        "None",
+                    ],
+                    ""
+                )
+            )
+
+        print("\nFINAL DTYPES:\n")
 
         print(df.dtypes)
 
@@ -771,10 +736,6 @@ def main():
 
         sys.exit(1)
 
-    # =================================================
-    # FAILED SYMBOL EXPORT
-    # =================================================
-
     if failed_symbols:
 
         failed_df = pd.DataFrame({
@@ -788,10 +749,6 @@ def main():
             FAILED_OUTPUT,
             index=False
         )
-
-    # =================================================
-    # SUMMARY
-    # =================================================
 
     end_time = time.time()
 
@@ -837,10 +794,6 @@ def main():
         f"\nParquet:\n"
         f"{PARQUET_OUTPUT}"
     )
-
-# =====================================================
-# ENTRY POINT
-# =====================================================
 
 if __name__ == "__main__":
 
