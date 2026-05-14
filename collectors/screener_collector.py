@@ -193,6 +193,36 @@ def load_stock_universe():
         sys.exit(1)
 
 # =====================================================
+# SAFE VALUE CLEANER
+# =====================================================
+
+def safe_numeric(value):
+
+    try:
+
+        if value in [
+
+            "Infinity",
+            "-Infinity",
+            "inf",
+            "-inf",
+            "INF",
+            "-INF",
+            "NaN",
+            "nan",
+            None,
+            "",
+        ]:
+
+            return np.nan
+
+        return float(value)
+
+    except Exception:
+
+        return np.nan
+
+# =====================================================
 # FETCH FUNDAMENTALS
 # =====================================================
 
@@ -265,7 +295,9 @@ def fetch_fundamentals(symbol):
                     ),
 
                 "MARKET_CAP":
-                    market_cap,
+                    safe_numeric(
+                        market_cap
+                    ),
 
                 "MARKET_CAP_CATEGORY":
                     classify_market_cap(
@@ -273,72 +305,96 @@ def fetch_fundamentals(symbol):
                     ),
 
                 "CURRENT_PRICE":
-                    current_price,
+                    safe_numeric(
+                        current_price
+                    ),
 
                 "PE_RATIO":
-                    info.get(
-                        "trailingPE",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "trailingPE",
+                            np.nan
+                        )
                     ),
 
                 "PRICE_TO_BOOK":
-                    info.get(
-                        "priceToBook",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "priceToBook",
+                            np.nan
+                        )
                     ),
 
                 "ROE":
-                    info.get(
-                        "returnOnEquity",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "returnOnEquity",
+                            np.nan
+                        )
                     ),
 
                 "DEBT_TO_EQUITY":
-                    info.get(
-                        "debtToEquity",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "debtToEquity",
+                            np.nan
+                        )
                     ),
 
                 "OPERATING_MARGIN":
-                    info.get(
-                        "operatingMargins",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "operatingMargins",
+                            np.nan
+                        )
                     ),
 
                 "PROFIT_MARGIN":
-                    info.get(
-                        "profitMargins",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "profitMargins",
+                            np.nan
+                        )
                     ),
 
                 "REVENUE_GROWTH":
-                    info.get(
-                        "revenueGrowth",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "revenueGrowth",
+                            np.nan
+                        )
                     ),
 
                 "EARNINGS_GROWTH":
-                    info.get(
-                        "earningsGrowth",
-                        np.nan
+                    safe_numeric(
+                        info.get(
+                            "earningsGrowth",
+                            np.nan
+                        )
                     ),
 
                 "SECTOR":
-                    info.get(
-                        "sector",
-                        "Unknown"
+                    str(
+                        info.get(
+                            "sector",
+                            "Unknown"
+                        )
                     ),
 
                 "RAW_SECTOR":
-                    info.get(
-                        "sector",
-                        "Unknown"
+                    str(
+                        info.get(
+                            "sector",
+                            "Unknown"
+                        )
                     ),
 
                 "INDUSTRY":
-                    info.get(
-                        "industry",
-                        "Unknown"
+                    str(
+                        info.get(
+                            "industry",
+                            "Unknown"
+                        )
                     ),
 
                 "FETCH_DATE":
@@ -497,13 +553,100 @@ def main():
         sys.exit(1)
 
     # =================================================
-    # BASIC CLEANING
+    # GLOBAL CLEANING
     # =================================================
+
+    print(
+        "\nApplying dataframe cleaning..."
+    )
+
+    INVALID_VALUES = [
+
+        "Infinity",
+        "-Infinity",
+        "inf",
+        "-inf",
+        "INF",
+        "-INF",
+        "NaN",
+        "nan",
+        "None",
+        "none",
+        "NULL",
+        "null",
+        "",
+    ]
+
+    df = df.replace(
+        INVALID_VALUES,
+        np.nan
+    )
 
     df = df.replace(
         [np.inf, -np.inf],
         np.nan
     )
+
+    # =================================================
+    # FORCE NUMERIC TYPES
+    # =================================================
+
+    NUMERIC_COLUMNS = [
+
+        "MARKET_CAP",
+        "CURRENT_PRICE",
+        "PE_RATIO",
+        "PRICE_TO_BOOK",
+        "ROE",
+        "DEBT_TO_EQUITY",
+        "OPERATING_MARGIN",
+        "PROFIT_MARGIN",
+        "REVENUE_GROWTH",
+        "EARNINGS_GROWTH",
+    ]
+
+    for col in NUMERIC_COLUMNS:
+
+        if col in df.columns:
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            )
+
+            df[col] = df[col].replace(
+                [np.inf, -np.inf],
+                np.nan
+            )
+
+    # =================================================
+    # FORCE TEXT TYPES
+    # =================================================
+
+    TEXT_COLUMNS = [
+
+        "SYMBOL",
+        "SECTOR",
+        "RAW_SECTOR",
+        "INDUSTRY",
+        "MARKET_CAP_CATEGORY",
+        "FETCH_DATE",
+    ]
+
+    for col in TEXT_COLUMNS:
+
+        if col in df.columns:
+
+            df[col] = (
+
+                df[col]
+                .fillna("")
+                .astype(str)
+            )
+
+    # =================================================
+    # REMOVE DUPLICATES
+    # =================================================
 
     df = df.drop_duplicates()
 
@@ -554,115 +697,80 @@ def main():
 
     try:
 
-        # -------------------------------------------------
-        # SAVE CSV
-        # -------------------------------------------------
+        print(
+            "\nSaving CSV..."
+        )
 
         df.to_csv(
             CSV_OUTPUT,
             index=False
         )
 
-        # -------------------------------------------------
-        # FINAL PARQUET SANITIZATION
-        # -------------------------------------------------
+        # =================================================
+        # FINAL ULTRA SAFE PARQUET CLEANING
+        # =================================================
 
         print(
-            "\nCleaning dataframe "
-            "before parquet export..."
+            "\nApplying final parquet safety cleaning..."
         )
 
-        INVALID_VALUES = [
-
-            "Infinity",
-            "-Infinity",
-            "inf",
-            "-inf",
-            "INF",
-            "-INF",
-            "NaN",
-            "nan",
-            "None",
-            "none",
-            "NULL",
-            "null",
-            "",
-        ]
-
-        # Replace invalid strings
         df = df.replace(
             INVALID_VALUES,
             np.nan
         )
 
-        # Replace true infinities
         df = df.replace(
             [np.inf, -np.inf],
             np.nan
         )
 
-        # -------------------------------------------------
-        # NUMERIC CONVERSION
-        # -------------------------------------------------
-
-        NUMERIC_COLUMNS = [
-
-            "MARKET_CAP",
-            "CURRENT_PRICE",
-            "PE_RATIO",
-            "PRICE_TO_BOOK",
-            "ROE",
-            "DEBT_TO_EQUITY",
-            "OPERATING_MARGIN",
-            "PROFIT_MARGIN",
-            "REVENUE_GROWTH",
-            "EARNINGS_GROWTH",
-        ]
-
+        # Force numeric conversion again
         for col in NUMERIC_COLUMNS:
 
             if col in df.columns:
 
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="coerce"
+                df[col] = (
+
+                    pd.to_numeric(
+                        df[col],
+                        errors="coerce"
+                    )
+
+                    .replace(
+                        [np.inf, -np.inf],
+                        np.nan
+                    )
                 )
 
-        # -------------------------------------------------
-        # TEXT COLUMN CONVERSION
-        # -------------------------------------------------
+        # Force object columns safely
+        for col in df.columns:
 
-        TEXT_COLUMNS = [
-
-            "SYMBOL",
-            "SECTOR",
-            "RAW_SECTOR",
-            "INDUSTRY",
-            "MARKET_CAP_CATEGORY",
-            "FETCH_DATE",
-        ]
-
-        for col in TEXT_COLUMNS:
-
-            if col in df.columns:
+            if df[col].dtype == "object":
 
                 df[col] = (
+
                     df[col]
+                    .fillna("")
                     .astype(str)
+
+                    .replace(
+                        [
+                            "Infinity",
+                            "-Infinity",
+                            "inf",
+                            "-inf",
+                            "nan",
+                            "None",
+                        ],
+                        ""
+                    )
                 )
 
-        # -------------------------------------------------
-        # FINAL SAFETY CLEAN
-        # -------------------------------------------------
-
-        df = df.replace(
-            [np.inf, -np.inf],
-            np.nan
+        print(
+            "\nColumn Types:\n"
         )
 
-        # -------------------------------------------------
-        # SAVE PARQUET
-        # -------------------------------------------------
+        print(df.dtypes)
 
         print(
             "\nSaving parquet dataset..."
@@ -760,38 +868,9 @@ def main():
         f"{PARQUET_OUTPUT}"
     )
 
-    # =================================================
-    # ANALYTICS
-    # =================================================
+    print("\nSample Data:\n")
 
-    try:
-
-        if (
-            "MARKET_CAP_CATEGORY"
-            in df.columns
-        ):
-
-            print(
-                "\nMarket Cap "
-                "Distribution:\n"
-            )
-
-            print(
-                df[
-                    "MARKET_CAP_CATEGORY"
-                ].value_counts()
-            )
-
-        print("\nSample Data:\n")
-
-        print(df.head())
-
-    except Exception as e:
-
-        print(
-            f"Analytics error: "
-            f"{e}"
-        )
+    print(df.head())
 
 # =====================================================
 # ENTRY POINT
