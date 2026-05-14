@@ -66,9 +66,7 @@ FAILED_OUTPUT = (
 # =====================================================
 
 MAX_STOCKS = 3000
-
 MAX_WORKERS = 8
-
 REQUEST_DELAY = 0.15
 
 # =====================================================
@@ -408,11 +406,9 @@ def main():
     )
 
     all_data = []
-
     failed_symbols = []
 
     successful = 0
-
     failed = 0
 
     start_time = time.time()
@@ -501,15 +497,13 @@ def main():
         sys.exit(1)
 
     # =================================================
-    # CLEANING
+    # BASIC CLEANING
     # =================================================
 
     df = df.replace(
         [np.inf, -np.inf],
         np.nan
     )
-
-    df = df.fillna(0)
 
     df = df.drop_duplicates()
 
@@ -520,13 +514,13 @@ def main():
     if "MARKET_CAP" in df.columns:
 
         df = df[
-            df["MARKET_CAP"] > 0
+            df["MARKET_CAP"].fillna(0) > 0
         ]
 
     if "CURRENT_PRICE" in df.columns:
 
         df = df[
-            df["CURRENT_PRICE"] > 0
+            df["CURRENT_PRICE"].fillna(0) > 0
         ]
 
     if "SYMBOL" in df.columns:
@@ -560,104 +554,23 @@ def main():
 
     try:
 
+        # -------------------------------------------------
+        # SAVE CSV
+        # -------------------------------------------------
+
         df.to_csv(
             CSV_OUTPUT,
             index=False
         )
-        # =========================================================
-# CLEAN INVALID NUMERIC VALUES
-# =========================================================
 
-import numpy as np
+        # -------------------------------------------------
+        # FINAL PARQUET SANITIZATION
+        # -------------------------------------------------
 
-numeric_columns = [
-
-    "PE_RATIO",
-    "ROE",
-    "ROCE",
-    "DIVIDEND_YIELD",
-    "DEBT_TO_EQUITY",
-    "MARKET_CAP",
-    "PROMOTER_HOLDING",
-    "FII_HOLDING",
-    "DII_HOLDING",
-]
-
-for col in numeric_columns:
-
-    if col in df.columns:
-
-        df[col] = (
-            df[col]
-            .astype(str)
-            .replace(
-                [
-                    "Infinity",
-                    "-Infinity",
-                    "inf",
-                    "-inf",
-                    "nan",
-                    "None",
-                    "",
-                ],
-                np.nan,
-            )
+        print(
+            "\nCleaning dataframe "
+            "before parquet export..."
         )
-
-        df[col] = pd.to_numeric(
-            df[col],
-            errors="coerce"
-        )
-
-        # =========================================================
-        # UNIVERSAL PARQUET SANITIZER
-        # =========================================================
-
-        import numpy as np
-
-        for col in df.columns:
-
-            try:
-
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .replace(
-                        [
-                            "Infinity",
-                            "-Infinity",
-                            "inf",
-                            "-inf",
-                            "None",
-                            "nan",
-                            "",
-                        ],
-                        np.nan,
-                    )
-                )
-
-                converted = pd.to_numeric(
-                    df[col],
-                    errors="ignore"
-                )
-
-                df[col] = converted
-
-            except Exception:
-
-                pass
-
-        df = df.replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
-        # =========================================================
-        # FINAL DATAFRAME SANITIZATION
-        # =========================================================
-
-        import numpy as np
-
-        print("\nCleaning dataframe before parquet export...")
 
         INVALID_VALUES = [
 
@@ -676,58 +589,90 @@ for col in numeric_columns:
             "",
         ]
 
-        df.replace(
+        # Replace invalid strings
+        df = df.replace(
             INVALID_VALUES,
-            np.nan,
-            inplace=True
+            np.nan
         )
 
-        df.replace(
+        # Replace true infinities
+        df = df.replace(
             [np.inf, -np.inf],
-            np.nan,
-            inplace=True
+            np.nan
         )
+
+        # -------------------------------------------------
+        # NUMERIC CONVERSION
+        # -------------------------------------------------
+
+        NUMERIC_COLUMNS = [
+
+            "MARKET_CAP",
+            "CURRENT_PRICE",
+            "PE_RATIO",
+            "PRICE_TO_BOOK",
+            "ROE",
+            "DEBT_TO_EQUITY",
+            "OPERATING_MARGIN",
+            "PROFIT_MARGIN",
+            "REVENUE_GROWTH",
+            "EARNINGS_GROWTH",
+        ]
+
+        for col in NUMERIC_COLUMNS:
+
+            if col in df.columns:
+
+                df[col] = pd.to_numeric(
+                    df[col],
+                    errors="coerce"
+                )
+
+        # -------------------------------------------------
+        # TEXT COLUMN CONVERSION
+        # -------------------------------------------------
 
         TEXT_COLUMNS = [
 
             "SYMBOL",
             "SECTOR",
-            "SUBSECTOR",
+            "RAW_SECTOR",
             "INDUSTRY",
-            "COMPANY_NAME",
+            "MARKET_CAP_CATEGORY",
+            "FETCH_DATE",
         ]
 
-        for col in df.columns:
-        
-            if col in TEXT_COLUMNS:
-                continue
+        for col in TEXT_COLUMNS:
 
-            try:
-        
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="ignore"
+            if col in df.columns:
+
+                df[col] = (
+                    df[col]
+                    .astype(str)
                 )
 
-            except Exception as e:
+        # -------------------------------------------------
+        # FINAL SAFETY CLEAN
+        # -------------------------------------------------
 
-                print(f"Skipped conversion for {col}: {e}")
+        df = df.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
 
-for col in df.columns:
+        # -------------------------------------------------
+        # SAVE PARQUET
+        # -------------------------------------------------
 
-    if df[col].dtype == "object":
-
-        df[col] = df[col].astype(str)
-
-        print("\nSaving parquet dataset...")
+        print(
+            "\nSaving parquet dataset..."
+        )
 
         df.to_parquet(
-            output_path,
+            PARQUET_OUTPUT,
             index=False,
             engine="pyarrow"
         )
-
-        print(f"\nSaved parquet successfully -> {output_path}")
 
         print(
             "\nSaved CSV + "
