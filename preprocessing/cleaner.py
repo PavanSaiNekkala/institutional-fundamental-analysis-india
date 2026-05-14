@@ -1,275 +1,469 @@
-import pandas as pd
-import numpy as np
-from pathlib import Path
+import os
+import sys
 import traceback
 import warnings
-import sys
+
+import pandas as pd
+import numpy as np
 
 warnings.filterwarnings("ignore")
 
-# =====================================
-# INPUT / OUTPUT
-# =====================================
+# =====================================================
+# PROJECT ROOT FIX
+# =====================================================
 
-PARQUET_INPUT = (
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        ".."
+    )
+)
+
+if PROJECT_ROOT not in sys.path:
+
+    sys.path.insert(
+        0,
+        PROJECT_ROOT
+    )
+
+# =====================================================
+# INPUT / OUTPUT
+# =====================================================
+
+INPUT_FILE = (
     "data/cache/parquet/"
     "fundamentals.parquet"
 )
 
-CSV_OUTPUT = (
-    "data/cleaned/"
+OUTPUT_CSV = (
+    "data/processed/"
     "cleaned_fundamentals.csv"
 )
 
-PARQUET_OUTPUT = (
+OUTPUT_PARQUET = (
     "data/cache/parquet/"
     "cleaned_fundamentals.parquet"
 )
 
+# =====================================================
+# SECTOR NORMALIZATION
+# =====================================================
 
-# =====================================
-# CLEANER
-# =====================================
+SECTOR_MAPPING = {
 
-def clean_fundamentals():
+    "Financial Services":
+        "Financials",
 
-    print("=" * 60)
+    "Banks":
+        "Financials",
 
-    print(
-        "CLEANING INSTITUTIONAL "
-        "FUNDAMENTALS"
-    )
+    "Technology":
+        "Information Technology",
 
-    print("=" * 60)
+    "Tech":
+        "Information Technology",
 
-    input_path = Path(PARQUET_INPUT)
+    "Healthcare":
+        "Healthcare",
 
-    # ---------------------------------
-    # FILE CHECK
-    # ---------------------------------
+    "Consumer Cyclical":
+        "Consumer",
 
-    if not input_path.exists():
+    "Consumer Defensive":
+        "Consumer",
 
-        print(
-            f"ERROR: Input file missing -> "
-            f"{PARQUET_INPUT}"
-        )
+    "Energy":
+        "Energy",
 
-        sys.exit(1)
+    "Industrials":
+        "Industrials",
 
-    # ---------------------------------
-    # LOAD PARQUET
-    # ---------------------------------
+    "Basic Materials":
+        "Materials",
+
+    "Utilities":
+        "Utilities",
+
+    "Real Estate":
+        "Real Estate",
+
+    "Communication Services":
+        "Communication",
+
+    "Unknown":
+        "Other"
+}
+
+# =====================================================
+# LOAD DATA
+# =====================================================
+
+def load_dataset():
 
     try:
 
+        if not os.path.exists(INPUT_FILE):
+
+            print(
+                f"ERROR: Missing file -> "
+                f"{INPUT_FILE}"
+            )
+
+            sys.exit(1)
+
         print(
-            "\nLoading parquet cache..."
+            "\nLoading fundamentals..."
         )
 
-        df = pd.read_parquet(
-            PARQUET_INPUT
+        df = pd.read_parquet(INPUT_FILE)
+
+        if df.empty:
+
+            print(
+                "ERROR: Empty dataset"
+            )
+
+            sys.exit(1)
+
+        print(
+            f"Loaded "
+            f"{len(df)} rows"
         )
+
+        return df
 
     except Exception as e:
 
         print(
-            f"ERROR reading parquet: "
-            f"{e}"
+            f"Load error: {e}"
         )
 
         traceback.print_exc()
 
         sys.exit(1)
 
-    # ---------------------------------
-    # EMPTY CHECK
-    # ---------------------------------
+# =====================================================
+# STANDARDIZE SECTORS
+# =====================================================
 
-    if df.empty:
+def normalize_sectors(df):
 
-        print(
-            "ERROR: DataFrame is empty"
+    if "SECTOR" not in df.columns:
+
+        return df
+
+    df["SECTOR"] = (
+
+        df["SECTOR"]
+
+        .fillna("Other")
+
+        .replace(SECTOR_MAPPING)
+
+    )
+
+    return df
+
+# =====================================================
+# REMOVE DUPLICATES
+# =====================================================
+
+def remove_duplicates(df):
+
+    if "SYMBOL" in df.columns:
+
+        df = (
+
+            df
+
+            .sort_values(
+                by="MARKET_CAP",
+                ascending=False
+            )
+
+            .drop_duplicates(
+                subset=["SYMBOL"]
+            )
         )
 
-        sys.exit(1)
+    return df
+
+# =====================================================
+# VALIDATION FILTERS
+# =====================================================
+
+def apply_validation(df):
+
+    # ---------------------------------------------
+    # MARKET CAP
+    # ---------------------------------------------
+
+    if "MARKET_CAP" in df.columns:
+
+        df = df[
+            df["MARKET_CAP"] > 0
+        ]
+
+    # ---------------------------------------------
+    # CURRENT PRICE
+    # ---------------------------------------------
+
+    if "CURRENT_PRICE" in df.columns:
+
+        df = df[
+            df["CURRENT_PRICE"] > 0
+        ]
+
+    # ---------------------------------------------
+    # SYMBOL
+    # ---------------------------------------------
+
+    if "SYMBOL" in df.columns:
+
+        df = df[
+            df["SYMBOL"].notna()
+        ]
+
+    return df
+
+# =====================================================
+# HANDLE MISSING VALUES
+# =====================================================
+
+def handle_missing_values(df):
+
+    numeric_columns = df.select_dtypes(
+        include=[np.number]
+    ).columns
+
+    for col in numeric_columns:
+
+        median_value = df[col].median()
+
+        df[col] = df[col].fillna(
+            median_value
+        )
+
+    categorical_columns = (
+
+        df.select_dtypes(
+            exclude=[np.number]
+        ).columns
+
+    )
+
+    for col in categorical_columns:
+
+        df[col] = df[col].fillna(
+            "Unknown"
+        )
+
+    return df
+
+# =====================================================
+# OUTLIER CONTROL
+# =====================================================
+
+def winsorize_columns(df):
+
+    columns = [
+
+        "PE_RATIO",
+        "ROE",
+        "REVENUE_GROWTH",
+        "EARNINGS_GROWTH",
+        "DEBT_TO_EQUITY"
+
+    ]
+
+    for col in columns:
+
+        if col in df.columns:
+
+            lower = df[col].quantile(0.01)
+
+            upper = df[col].quantile(0.99)
+
+            df[col] = np.clip(
+                df[col],
+                lower,
+                upper
+            )
+
+    return df
+
+# =====================================================
+# CREATE INSTITUTIONAL FLAGS
+# =====================================================
+
+def create_flags(df):
+
+    # ---------------------------------------------
+    # QUALITY FLAG
+    # ---------------------------------------------
+
+    df["HIGH_QUALITY_FLAG"] = np.where(
+
+        (
+            (df["ROE"] > 0.15)
+            &
+            (df["DEBT_TO_EQUITY"] < 1)
+        ),
+
+        1,
+
+        0
+    )
+
+    # ---------------------------------------------
+    # GROWTH FLAG
+    # ---------------------------------------------
+
+    df["HIGH_GROWTH_FLAG"] = np.where(
+
+        (
+            (df["REVENUE_GROWTH"] > 0.10)
+            &
+            (df["EARNINGS_GROWTH"] > 0.10)
+        ),
+
+        1,
+
+        0
+    )
+
+    return df
+
+# =====================================================
+# MAIN PIPELINE
+# =====================================================
+
+def main():
+
+    print("=" * 60)
 
     print(
-        f"\nLoaded {len(df)} rows"
+        "INSTITUTIONAL CLEANING PIPELINE"
+    )
+
+    print("=" * 60)
+
+    # =================================================
+    # LOAD
+    # =================================================
+
+    df = load_dataset()
+
+    # =================================================
+    # CLEANING
+    # =================================================
+
+    df = normalize_sectors(df)
+
+    df = remove_duplicates(df)
+
+    df = apply_validation(df)
+
+    df = handle_missing_values(df)
+
+    df = winsorize_columns(df)
+
+    df = create_flags(df)
+
+    # =================================================
+    # FINAL SORT
+    # =================================================
+
+    if "MARKET_CAP" in df.columns:
+
+        df = df.sort_values(
+
+            by="MARKET_CAP",
+
+            ascending=False
+        )
+
+    # =================================================
+    # CREATE DIRECTORIES
+    # =================================================
+
+    os.makedirs(
+        "data/processed",
+        exist_ok=True
+    )
+
+    os.makedirs(
+        "data/cache/parquet",
+        exist_ok=True
+    )
+
+    # =================================================
+    # SAVE OUTPUTS
+    # =================================================
+
+    df.to_csv(
+        OUTPUT_CSV,
+        index=False
+    )
+
+    df.to_parquet(
+        OUTPUT_PARQUET,
+        index=False
+    )
+
+    # =================================================
+    # SUMMARY
+    # =================================================
+
+    print("\n" + "=" * 60)
+
+    print(
+        "CLEANING COMPLETE"
+    )
+
+    print("=" * 60)
+
+    print(
+        f"Final Dataset Size: "
+        f"{len(df)}"
     )
 
     print(
-        f"Columns Found: "
-        f"{len(df.columns)}"
+        f"\nCSV Saved:\n"
+        f"{OUTPUT_CSV}"
     )
 
-    # ---------------------------------
-    # PREVIEW
-    # ---------------------------------
+    print(
+        f"\nParquet Saved:\n"
+        f"{OUTPUT_PARQUET}"
+    )
+
+    print("\nSector Distribution:\n")
+
+    print(
+        df["SECTOR"]
+        .value_counts()
+        .head(15)
+    )
 
     print("\nSample Data:\n")
 
     print(df.head())
 
-    # =====================================
-    # CLEANING
-    # =====================================
-
-    print("\nCleaning data...")
-
-    # Replace inf values
-    df = df.replace(
-        [np.inf, -np.inf],
-        np.nan
-    )
-
-    # Fill missing values
-    df = df.fillna(0)
-
-    # Remove duplicates
-    df = df.drop_duplicates()
-
-    # Remove duplicate symbols
-    if "SYMBOL" in df.columns:
-
-        df = df.drop_duplicates(
-            subset=["SYMBOL"]
-        )
-
-    # Strip column spaces
-    df.columns = [
-        col.strip()
-        for col in df.columns
-    ]
-
-    # =====================================
-    # SAFE TYPE CONVERSION
-    # =====================================
-
-    excluded_columns = [
-
-        "SYMBOL",
-        "SECTOR",
-        "RAW_SECTOR",
-        "INDUSTRY",
-        "FETCH_DATE",
-        "MARKET_CAP_CATEGORY"
-    ]
-
-    for col in df.columns:
-
-        try:
-
-            if col not in excluded_columns:
-
-                df[col] = pd.to_numeric(
-                    df[col],
-                    errors="coerce"
-                )
-
-        except Exception as e:
-
-            print(
-                f"Warning converting "
-                f"{col}: {e}"
-            )
-
-    # Replace conversion NaNs
-    df = df.fillna(0)
-
-    # =====================================
-    # OUTPUT DIRECTORIES
-    # =====================================
-
-    Path(
-        "data/cleaned"
-    ).mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    Path(
-        "data/cache/parquet"
-    ).mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    # =====================================
-    # SAVE OUTPUTS
-    # =====================================
-
-    try:
-
-        # CSV export
-        df.to_csv(
-            CSV_OUTPUT,
-            index=False
-        )
-
-        # Parquet export
-        df.to_parquet(
-            PARQUET_OUTPUT,
-            index=False
-        )
-
-    except Exception as e:
-
-        print(
-            f"ERROR saving cleaned "
-            f"outputs: {e}"
-        )
-
-        traceback.print_exc()
-
-        sys.exit(1)
-
-    # =====================================
-    # SUMMARY
-    # =====================================
-
-    print("\n" + "=" * 60)
-
-    print(
-        "DATA CLEANING COMPLETE"
-    )
-
-    print("=" * 60)
-
-    print(
-        f"Final Rows: {len(df)}"
-    )
-
-    print(
-        f"Final Columns: "
-        f"{len(df.columns)}"
-    )
-
-    print(
-        f"\nCSV Saved To:\n"
-        f"{CSV_OUTPUT}"
-    )
-
-    print(
-        f"\nParquet Saved To:\n"
-        f"{PARQUET_OUTPUT}"
-    )
-
-
-# =====================================
+# =====================================================
 # ENTRY POINT
-# =====================================
+# =====================================================
 
 if __name__ == "__main__":
 
     try:
 
-        clean_fundamentals()
+        main()
 
     except Exception as e:
 
         print(
-            "\nFATAL CLEANER ERROR"
+            "\nFATAL CLEANING ERROR"
         )
 
         print(str(e))
