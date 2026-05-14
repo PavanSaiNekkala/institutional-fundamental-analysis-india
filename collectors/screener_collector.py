@@ -4,7 +4,10 @@ import time
 import traceback
 import warnings
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed
+)
 
 import pandas as pd
 import numpy as np
@@ -12,9 +15,9 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-# =====================================
-# PROJECT ROOT PATH FIX
-# =====================================
+# =====================================================
+# PROJECT ROOT FIX
+# =====================================================
 
 PROJECT_ROOT = os.path.abspath(
     os.path.join(
@@ -24,19 +27,28 @@ PROJECT_ROOT = os.path.abspath(
 )
 
 if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
-from utils.market_cap_classifier import classify_market_cap
+    sys.path.insert(
+        0,
+        PROJECT_ROOT
+    )
 
+from utils.market_cap_classifier import (
+    classify_market_cap
+)
 
-# =====================================
+# =====================================================
 # CONFIGURATION
-# =====================================
+# =====================================================
 
-INPUT_FILE = "data/raw/yfinance_stock_urls.xlsx"
+INPUT_FILE = (
+    "data/raw/"
+    "yfinance_stock_urls.xlsx"
+)
 
 CSV_OUTPUT = (
-    "data/financials/fundamentals.csv"
+    "data/financials/"
+    "fundamentals.csv"
 )
 
 PARQUET_OUTPUT = (
@@ -44,20 +56,24 @@ PARQUET_OUTPUT = (
     "fundamentals.parquet"
 )
 
-# -------------------------------------
-# GITHUB SAFE SETTINGS
-# -------------------------------------
+FAILED_OUTPUT = (
+    "exports/"
+    "failed_symbols.csv"
+)
 
-MAX_STOCKS = 300
+# =====================================================
+# PERFORMANCE SETTINGS
+# =====================================================
 
-MAX_WORKERS = 3
+MAX_STOCKS = 1200
 
-REQUEST_DELAY = 1
+MAX_WORKERS = 8
 
+REQUEST_DELAY = 0.15
 
-# =====================================
+# =====================================================
 # LOAD STOCK UNIVERSE
-# =====================================
+# =====================================================
 
 def load_stock_universe():
 
@@ -66,14 +82,14 @@ def load_stock_universe():
         if not os.path.exists(INPUT_FILE):
 
             print(
-                f"ERROR: File not found -> "
+                f"ERROR: Missing file -> "
                 f"{INPUT_FILE}"
             )
 
             sys.exit(1)
 
         print(
-            "\nLoading Excel universe..."
+            "\nLoading stock universe..."
         )
 
         df = pd.read_excel(INPUT_FILE)
@@ -81,14 +97,14 @@ def load_stock_universe():
         if df.empty:
 
             print(
-                "ERROR: Input Excel is empty"
+                "ERROR: Empty input file"
             )
 
             sys.exit(1)
 
-        # ---------------------------------
+        # =============================================
         # SYMBOL COLUMN
-        # ---------------------------------
+        # =============================================
 
         if "SYMBOL" in df.columns:
 
@@ -96,13 +112,12 @@ def load_stock_universe():
                 df["SYMBOL"]
                 .dropna()
                 .astype(str)
-                .unique()
                 .tolist()
             )
 
-        # ---------------------------------
-        # YFINANCE URL COLUMN
-        # ---------------------------------
+        # =============================================
+        # URL COLUMN
+        # =============================================
 
         elif "YFINANCE_URL" in df.columns:
 
@@ -130,21 +145,25 @@ def load_stock_universe():
         else:
 
             print(
-                "ERROR: Missing SYMBOL "
-                "or YFINANCE_URL column"
+                "ERROR: Missing "
+                "SYMBOL/YFINANCE_URL"
             )
 
             sys.exit(1)
 
-        # ---------------------------------
+        # =============================================
         # CLEAN SYMBOLS
-        # ---------------------------------
+        # =============================================
 
         cleaned_symbols = []
 
         for symbol in symbols:
 
-            symbol = symbol.strip()
+            symbol = (
+                str(symbol)
+                .strip()
+                .upper()
+            )
 
             if not symbol.endswith(".NS"):
 
@@ -159,7 +178,7 @@ def load_stock_universe():
         print(
             f"Loaded "
             f"{len(cleaned_symbols)} "
-            f"stocks"
+            f"symbols"
         )
 
         return cleaned_symbols
@@ -167,7 +186,7 @@ def load_stock_universe():
     except Exception as e:
 
         print(
-            f"ERROR loading stock universe: "
+            f"Universe loading error: "
             f"{e}"
         )
 
@@ -175,10 +194,9 @@ def load_stock_universe():
 
         sys.exit(1)
 
-
-# =====================================
+# =====================================================
 # FETCH FUNDAMENTALS
-# =====================================
+# =====================================================
 
 def fetch_fundamentals(symbol):
 
@@ -194,19 +212,51 @@ def fetch_fundamentals(symbol):
 
             fast_info = stock.fast_info
 
+            info = stock.info
+
+            # =========================================
+            # MARKET CAP
+            # =========================================
+
             market_cap = (
                 fast_info.get(
                     "market_cap",
-                    0
+                    None
                 )
             )
+
+            if not market_cap:
+
+                market_cap = (
+                    info.get(
+                        "marketCap",
+                        0
+                    )
+                )
+
+            # =========================================
+            # CURRENT PRICE
+            # =========================================
 
             current_price = (
                 fast_info.get(
                     "lastPrice",
-                    0
+                    None
                 )
             )
+
+            if not current_price:
+
+                current_price = (
+                    info.get(
+                        "currentPrice",
+                        0
+                    )
+                )
+
+            # =========================================
+            # FINAL DATA
+            # =========================================
 
             data = {
 
@@ -227,28 +277,71 @@ def fetch_fundamentals(symbol):
                 "CURRENT_PRICE":
                     current_price,
 
-                # Placeholder fields
-                "PE_RATIO": 0,
+                "PE_RATIO":
+                    info.get(
+                        "trailingPE",
+                        np.nan
+                    ),
 
-                "PRICE_TO_BOOK": 0,
+                "PRICE_TO_BOOK":
+                    info.get(
+                        "priceToBook",
+                        np.nan
+                    ),
 
-                "ROE": 0,
+                "ROE":
+                    info.get(
+                        "returnOnEquity",
+                        np.nan
+                    ),
 
-                "DEBT_TO_EQUITY": 0,
+                "DEBT_TO_EQUITY":
+                    info.get(
+                        "debtToEquity",
+                        np.nan
+                    ),
 
-                "OPERATING_MARGIN": 0,
+                "OPERATING_MARGIN":
+                    info.get(
+                        "operatingMargins",
+                        np.nan
+                    ),
 
-                "PROFIT_MARGIN": 0,
+                "PROFIT_MARGIN":
+                    info.get(
+                        "profitMargins",
+                        np.nan
+                    ),
 
-                "REVENUE_GROWTH": 0,
+                "REVENUE_GROWTH":
+                    info.get(
+                        "revenueGrowth",
+                        np.nan
+                    ),
 
-                "EARNINGS_GROWTH": 0,
+                "EARNINGS_GROWTH":
+                    info.get(
+                        "earningsGrowth",
+                        np.nan
+                    ),
 
-                "SECTOR": "Unknown",
+                "SECTOR":
+                    info.get(
+                        "sector",
+                        "Unknown"
+                    ),
 
-                "RAW_SECTOR": "Unknown",
+                "RAW_SECTOR":
+                    info.get(
+                        "sector",
+                        "Unknown"
+                    ),
 
-                "INDUSTRY": "Unknown",
+                "INDUSTRY":
+                    info.get(
+                        "industry",
+                        "Unknown"
+                    ),
 
                 "FETCH_DATE":
                     datetime.now()
@@ -264,34 +357,30 @@ def fetch_fundamentals(symbol):
             error_msg = str(e)
 
             print(
-                f"Retry {attempt + 1}/3 "
+                f"Retry "
+                f"{attempt + 1}/3 "
                 f"for {symbol}: "
                 f"{error_msg}"
             )
-
-            # -----------------------------
-            # RATE LIMIT HANDLING
-            # -----------------------------
 
             if (
                 "Too Many Requests"
                 in error_msg
             ):
 
-                time.sleep(10)
+                time.sleep(8)
 
             else:
 
-                time.sleep(3)
+                time.sleep(2)
 
     print(f"FAILED: {symbol}")
 
     return None
 
-
-# =====================================
-# MAIN EXECUTION
-# =====================================
+# =====================================================
+# MAIN
+# =====================================================
 
 def main():
 
@@ -306,28 +395,21 @@ def main():
 
     stocks = load_stock_universe()
 
-    # ---------------------------------
-    # LIMIT FOR GITHUB STABILITY
-    # ---------------------------------
-
     stocks = stocks[:MAX_STOCKS]
 
     print(
-        f"\nTotal Stocks Selected: "
+        f"\nStocks Selected: "
         f"{len(stocks)}"
     )
 
     print(
-        f"Parallel Workers: "
+        f"Workers: "
         f"{MAX_WORKERS}"
     )
 
-    print(
-        "\nFetching institutional "
-        "fundamentals...\n"
-    )
-
     all_data = []
+
+    failed_symbols = []
 
     successful = 0
 
@@ -335,9 +417,9 @@ def main():
 
     start_time = time.time()
 
-    # =====================================
+    # =================================================
     # PARALLEL EXECUTION
-    # =====================================
+    # =================================================
 
     with ThreadPoolExecutor(
         max_workers=MAX_WORKERS
@@ -372,7 +454,6 @@ def main():
                 print(
                     f"[{completed}/"
                     f"{len(stocks)}] "
-                    f"Completed: "
                     f"{stock_symbol}"
                 )
 
@@ -386,34 +467,42 @@ def main():
 
                     failed += 1
 
+                    failed_symbols.append(
+                        stock_symbol
+                    )
+
             except Exception as e:
 
                 print(
-                    f"ERROR processing "
-                    f"{stock_symbol}: "
+                    f"ERROR: "
+                    f"{stock_symbol} -> "
                     f"{e}"
                 )
 
                 failed += 1
 
-    # =====================================
-    # CREATE DATAFRAME
-    # =====================================
+                failed_symbols.append(
+                    stock_symbol
+                )
+
+    # =================================================
+    # DATAFRAME
+    # =================================================
 
     df = pd.DataFrame(all_data)
 
     if df.empty:
 
         print(
-            "\nERROR: No valid stock "
-            "data collected"
+            "\nERROR: "
+            "No data collected"
         )
 
         sys.exit(1)
 
-    # =====================================
-    # CLEAN DATA
-    # =====================================
+    # =================================================
+    # CLEANING
+    # =================================================
 
     df = df.replace(
         [np.inf, -np.inf],
@@ -424,9 +513,31 @@ def main():
 
     df = df.drop_duplicates()
 
-    # =====================================
-    # CREATE OUTPUT DIRECTORIES
-    # =====================================
+    # =================================================
+    # VALIDATION FILTERS
+    # =================================================
+
+    if "MARKET_CAP" in df.columns:
+
+        df = df[
+            df["MARKET_CAP"] > 0
+        ]
+
+    if "CURRENT_PRICE" in df.columns:
+
+        df = df[
+            df["CURRENT_PRICE"] > 0
+        ]
+
+    if "SYMBOL" in df.columns:
+
+        df = df[
+            df["SYMBOL"].notna()
+        ]
+
+    # =================================================
+    # CREATE DIRECTORIES
+    # =================================================
 
     os.makedirs(
         "data/financials",
@@ -438,19 +549,22 @@ def main():
         exist_ok=True
     )
 
-    # =====================================
-    # SAVE CSV + PARQUET
-    # =====================================
+    os.makedirs(
+        "exports",
+        exist_ok=True
+    )
+
+    # =================================================
+    # SAVE OUTPUTS
+    # =================================================
 
     try:
 
-        # CSV export
         df.to_csv(
             CSV_OUTPUT,
             index=False
         )
 
-        # PARQUET export
         df.to_parquet(
             PARQUET_OUTPUT,
             index=False
@@ -458,23 +572,44 @@ def main():
 
         print(
             "\nSaved CSV + "
-            "Parquet cache"
+            "Parquet outputs"
         )
 
     except Exception as e:
 
         print(
-            f"ERROR saving outputs: "
-            f"{e}"
+            f"Save error: {e}"
         )
 
         traceback.print_exc()
 
         sys.exit(1)
 
-    # =====================================
-    # FINAL SUMMARY
-    # =====================================
+    # =================================================
+    # FAILED SYMBOL EXPORT
+    # =================================================
+
+    if failed_symbols:
+
+        failed_df = pd.DataFrame({
+
+            "FAILED_SYMBOLS":
+                failed_symbols
+
+        })
+
+        failed_df.to_csv(
+            FAILED_OUTPUT,
+            index=False
+        )
+
+        print(
+            "\nFailed symbols exported"
+        )
+
+    # =================================================
+    # SUMMARY
+    # =================================================
 
     end_time = time.time()
 
@@ -486,18 +621,19 @@ def main():
     print("\n" + "=" * 60)
 
     print(
-        "INSTITUTIONAL DATA "
-        "COLLECTION COMPLETE"
+        "DATA COLLECTION COMPLETE"
     )
 
     print("=" * 60)
 
     print(
-        f"Successful: {successful}"
+        f"Successful: "
+        f"{successful}"
     )
 
     print(
-        f"Failed: {failed}"
+        f"Failed: "
+        f"{failed}"
     )
 
     print(
@@ -506,22 +642,23 @@ def main():
     )
 
     print(
-        f"Runtime: {runtime} minutes"
+        f"Runtime: "
+        f"{runtime} minutes"
     )
 
     print(
-        f"\nCSV Saved To:\n"
+        f"\nCSV:\n"
         f"{CSV_OUTPUT}"
     )
 
     print(
-        f"\nParquet Saved To:\n"
+        f"\nParquet:\n"
         f"{PARQUET_OUTPUT}"
     )
 
-    # =====================================
+    # =================================================
     # ANALYTICS
-    # =====================================
+    # =================================================
 
     try:
 
@@ -548,14 +685,13 @@ def main():
     except Exception as e:
 
         print(
-            f"Analytics display "
-            f"error: {e}"
+            f"Analytics error: "
+            f"{e}"
         )
 
-
-# =====================================
+# =====================================================
 # ENTRY POINT
-# =====================================
+# =====================================================
 
 if __name__ == "__main__":
 
