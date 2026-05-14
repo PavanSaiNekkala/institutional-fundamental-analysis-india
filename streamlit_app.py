@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import warnings
 import traceback
 from pathlib import Path
@@ -297,7 +298,23 @@ top_n = st.sidebar.slider(
 search_stock = st.sidebar.text_input(
     "Search Symbol"
 )
+# =========================================================
+# CONFIDENCE SCORE
+# =========================================================
 
+if "FINAL_SCORE" in df.columns:
+
+    df["CONFIDENCE_SCORE"] = (
+        (
+            df["FINAL_SCORE"] * 0.60
+        ) +
+        (
+            df["QUALITY_SCORE"] * 0.25
+        ) +
+        (
+            df["OWNERSHIP_SCORE"] * 0.15
+        )
+    ).round(2)
 # =========================================================
 # FILTERS
 # =========================================================
@@ -460,7 +477,44 @@ st.plotly_chart(
     fig_sector,
     use_container_width=True
 )
+# =========================================================
+# MARKET CAP TREEMAP
+# =========================================================
 
+st.subheader(
+    "🌐 Market Cap Treemap"
+)
+
+if (
+    "MARKET_CAP" in filtered_df.columns
+    and
+    "SECTOR" in filtered_df.columns
+):
+
+    treemap_df = (
+        filtered_df
+        .sort_values(
+            by="MARKET_CAP",
+            ascending=False
+        )
+        .head(100)
+    )
+
+    fig_tree = px.treemap(
+        treemap_df,
+        path=["SECTOR", "SYMBOL"],
+        values="MARKET_CAP",
+        color="FINAL_SCORE",
+        hover_data=[
+            "FINAL_SCORE",
+            "TRADE_DECISION"
+        ]
+    )
+
+    st.plotly_chart(
+        fig_tree,
+        use_container_width=True
+    )
 # =========================================================
 # TRADE DECISION BREAKDOWN
 # =========================================================
@@ -512,7 +566,44 @@ st.plotly_chart(
     fig_grade,
     use_container_width=True
 )
+# =========================================================
+# HIGH CONFIDENCE STOCKS
+# =========================================================
 
+st.subheader(
+    "🔥 Highest Confidence Stocks"
+)
+
+confidence_df = (
+    filtered_df
+    .sort_values(
+        by="CONFIDENCE_SCORE",
+        ascending=False
+    )
+    .head(15)
+)
+
+confidence_columns = [
+
+    "SYMBOL",
+    "FINAL_SCORE",
+    "CONFIDENCE_SCORE",
+    "TRADE_DECISION",
+    "SECTOR"
+]
+
+available_confidence_columns = [
+
+    col for col in confidence_columns
+    if col in confidence_df.columns
+]
+
+st.dataframe(
+    confidence_df[
+        available_confidence_columns
+    ],
+    use_container_width=True
+)
 # =========================================================
 # RAW DATA
 # =========================================================
