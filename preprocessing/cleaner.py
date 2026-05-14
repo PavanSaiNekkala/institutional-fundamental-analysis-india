@@ -27,6 +27,14 @@ if PROJECT_ROOT not in sys.path:
     )
 
 # =====================================================
+# TAXONOMY IMPORT
+# =====================================================
+
+from utils.sector_taxonomy import (
+    SUBSECTOR_TO_SECTOR
+)
+
+# =====================================================
 # INPUT / OUTPUT
 # =====================================================
 
@@ -46,52 +54,149 @@ OUTPUT_PARQUET = (
 )
 
 # =====================================================
-# SECTOR NORMALIZATION
+# SUBSECTOR NORMALIZATION
 # =====================================================
 
-SECTOR_MAPPING = {
+SUBSECTOR_MAPPING = {
 
-    "Financial Services":
-        "Financials",
+    # ---------------------------------------------
+    # FINANCIALS
+    # ---------------------------------------------
 
-    "Banks":
-        "Financials",
+    "Banks - Regional":
+        "Private Sector Banks",
 
-    "Technology":
-        "Information Technology",
+    "Banks - Diversified":
+        "Private Sector Banks",
 
-    "Tech":
-        "Information Technology",
+    "Credit Services":
+        "NBFC – Lending",
 
-    "Healthcare":
-        "Healthcare",
+    "Financial Conglomerates":
+        "NBFC – Investment",
 
-    "Consumer Cyclical":
-        "Consumer",
+    "Insurance - Life":
+        "Life Insurance",
 
-    "Consumer Defensive":
-        "Consumer",
+    "Insurance - Diversified":
+        "General Insurance",
 
-    "Energy":
-        "Energy",
+    "Asset Management":
+        "Asset Management Companies",
 
-    "Industrials":
-        "Industrials",
+    # ---------------------------------------------
+    # TECHNOLOGY
+    # ---------------------------------------------
 
-    "Basic Materials":
-        "Materials",
+    "Information Technology Services":
+        "IT Services",
 
-    "Utilities":
-        "Utilities",
+    "Software - Infrastructure":
+        "Software Products",
 
-    "Real Estate":
-        "Real Estate",
+    "Software - Application":
+        "SaaS",
 
-    "Communication Services":
-        "Communication",
+    "Consulting Services":
+        "IT Consulting",
+
+    "Semiconductors":
+        "Data Analytics / AI",
+
+    # ---------------------------------------------
+    # AUTOMOBILES
+    # ---------------------------------------------
+
+    "Auto Manufacturers":
+        "Passenger Vehicles",
+
+    "Auto Parts":
+        "Auto Components",
+
+    "Rubber & Tires":
+        "Tyres & Rubber",
+
+    # ---------------------------------------------
+    # HEALTHCARE
+    # ---------------------------------------------
+
+    "Drug Manufacturers":
+        "Pharma – Formulations",
+
+    "Biotechnology":
+        "Biotechnology",
+
+    "Medical Devices":
+        "Medical Devices",
+
+    "Diagnostics & Research":
+        "Diagnostics",
+
+    # ---------------------------------------------
+    # CHEMICALS
+    # ---------------------------------------------
+
+    "Specialty Chemicals":
+        "Specialty Chemicals",
+
+    "Agricultural Inputs":
+        "Agrochemicals",
+
+    # ---------------------------------------------
+    # ENERGY
+    # ---------------------------------------------
+
+    "Oil & Gas Refining":
+        "Oil Refining",
+
+    "Oil & Gas Integrated":
+        "Oil Marketing",
+
+    "Thermal Coal":
+        "Coal",
+
+    "Utilities - Renewable":
+        "Power Generation – Renewable",
+
+    # ---------------------------------------------
+    # INDUSTRIALS
+    # ---------------------------------------------
+
+    "Engineering & Construction":
+        "Engineering & EPC",
+
+    "Industrial Products":
+        "Industrial Machinery",
+
+    "Electrical Equipment":
+        "Electrical Equipment",
+
+    # ---------------------------------------------
+    # CONSUMER
+    # ---------------------------------------------
+
+    "Beverages":
+        "FMCG – Beverages",
+
+    "Household & Personal Products":
+        "FMCG – Personal Care",
+
+    "Food Distribution":
+        "FMCG – Food",
+
+    # ---------------------------------------------
+    # TELECOM
+    # ---------------------------------------------
+
+    "Telecom Services":
+        "Telecom Services",
+
+    # ---------------------------------------------
+    # DEFAULT
+    # ---------------------------------------------
 
     "Unknown":
-        "Other"
+        "Diversified"
 }
 
 # =====================================================
@@ -143,23 +248,55 @@ def load_dataset():
         sys.exit(1)
 
 # =====================================================
-# STANDARDIZE SECTORS
+# NORMALIZE SUBSECTORS
 # =====================================================
 
-def normalize_sectors(df):
+def normalize_subsectors(df):
 
-    if "SECTOR" not in df.columns:
+    if "SUBSECTOR" not in df.columns:
+
+        if "INDUSTRY" in df.columns:
+
+            df["SUBSECTOR"] = df["INDUSTRY"]
+
+        else:
+
+            df["SUBSECTOR"] = "Diversified"
+
+    df["SUBSECTOR"] = (
+
+        df["SUBSECTOR"]
+
+        .fillna("Diversified")
+
+        .replace(
+            SUBSECTOR_MAPPING
+        )
+    )
+
+    return df
+
+# =====================================================
+# MAP SECTOR FROM SUBSECTOR
+# =====================================================
+
+def map_sector_from_subsector(df):
+
+    if "SUBSECTOR" not in df.columns:
+
+        df["SECTOR"] = "Misc"
 
         return df
 
     df["SECTOR"] = (
 
-        df["SECTOR"]
+        df["SUBSECTOR"]
 
-        .fillna("Other")
+        .map(
+            SUBSECTOR_TO_SECTOR
+        )
 
-        .replace(SECTOR_MAPPING)
-
+        .fillna("Misc")
     )
 
     return df
@@ -194,29 +331,17 @@ def remove_duplicates(df):
 
 def apply_validation(df):
 
-    # ---------------------------------------------
-    # MARKET CAP
-    # ---------------------------------------------
-
     if "MARKET_CAP" in df.columns:
 
         df = df[
             df["MARKET_CAP"] > 0
         ]
 
-    # ---------------------------------------------
-    # CURRENT PRICE
-    # ---------------------------------------------
-
     if "CURRENT_PRICE" in df.columns:
 
         df = df[
             df["CURRENT_PRICE"] > 0
         ]
-
-    # ---------------------------------------------
-    # SYMBOL
-    # ---------------------------------------------
 
     if "SYMBOL" in df.columns:
 
@@ -249,7 +374,6 @@ def handle_missing_values(df):
         df.select_dtypes(
             exclude=[np.number]
         ).columns
-
     )
 
     for col in categorical_columns:
@@ -272,7 +396,9 @@ def winsorize_columns(df):
         "ROE",
         "REVENUE_GROWTH",
         "EARNINGS_GROWTH",
-        "DEBT_TO_EQUITY"
+        "DEBT_TO_EQUITY",
+        "OPERATING_MARGIN",
+        "PROFIT_MARGIN"
 
     ]
 
@@ -298,10 +424,6 @@ def winsorize_columns(df):
 
 def create_flags(df):
 
-    # ---------------------------------------------
-    # QUALITY FLAG
-    # ---------------------------------------------
-
     df["HIGH_QUALITY_FLAG"] = np.where(
 
         (
@@ -315,16 +437,27 @@ def create_flags(df):
         0
     )
 
-    # ---------------------------------------------
-    # GROWTH FLAG
-    # ---------------------------------------------
-
     df["HIGH_GROWTH_FLAG"] = np.where(
 
         (
             (df["REVENUE_GROWTH"] > 0.10)
             &
             (df["EARNINGS_GROWTH"] > 0.10)
+        ),
+
+        1,
+
+        0
+    )
+
+    df["COMPOUNDER_FLAG"] = np.where(
+
+        (
+            (df["ROE"] > 0.18)
+            &
+            (df["OPERATING_MARGIN"] > 0.15)
+            &
+            (df["EARNINGS_GROWTH"] > 0.12)
         ),
 
         1,
@@ -358,7 +491,9 @@ def main():
     # CLEANING
     # =================================================
 
-    df = normalize_sectors(df)
+    df = normalize_subsectors(df)
+
+    df = map_sector_from_subsector(df)
 
     df = remove_duplicates(df)
 
@@ -443,12 +578,33 @@ def main():
     print(
         df["SECTOR"]
         .value_counts()
-        .head(15)
+        .head(20)
+    )
+
+    print("\nSubsector Distribution:\n")
+
+    print(
+        df["SUBSECTOR"]
+        .value_counts()
+        .head(30)
     )
 
     print("\nSample Data:\n")
 
-    print(df.head())
+    print(
+
+        df[
+            [
+                "SYMBOL",
+                "SECTOR",
+                "SUBSECTOR",
+                "MARKET_CAP"
+            ]
+        ]
+
+        .head(20)
+
+    )
 
 # =====================================================
 # ENTRY POINT
