@@ -80,23 +80,25 @@ def generate_trade_decision(
     final_score
 ):
 
-    # ---------------------------------
-    # INSTITUTIONAL STRONG BUY
-    # ---------------------------------
-
     if final_score >= 85:
-    return "INSTITUTIONAL STRONG BUY"
 
-elif final_score >= 72:
-    return "BUY"
+        return (
+            "INSTITUTIONAL STRONG BUY"
+        )
 
-elif final_score >= 55:
-    return "HOLD"
+    elif final_score >= 72:
 
-elif final_score >= 40:
-    return "WEAK"
+        return "BUY"
 
-return "AVOID"
+    elif final_score >= 55:
+
+        return "HOLD"
+
+    elif final_score >= 40:
+
+        return "WEAK"
+
+    return "AVOID"
 # =====================================
 # FINAL SCORE
 # =====================================
@@ -282,6 +284,21 @@ def main():
     )
 
     df = df.fillna(0)
+    # =====================================
+    # DATA VALIDATION
+    # =====================================
+
+    if "MARKET_CAP" in df.columns:
+
+        df = df[
+            df["MARKET_CAP"] > 0
+        ]
+
+    df = df.drop_duplicates()
+
+    df = df[
+        df["FINAL_SCORE"].notna()
+    ]
 
     # =====================================
     # FINAL SCORE
