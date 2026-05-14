@@ -84,42 +84,19 @@ def generate_trade_decision(
     # INSTITUTIONAL STRONG BUY
     # ---------------------------------
 
-    if final_score >= 70:
+    if final_score >= 85:
+    return "INSTITUTIONAL STRONG BUY"
 
-        return (
-            "INSTITUTIONAL STRONG BUY"
-        )
+elif final_score >= 72:
+    return "BUY"
 
-    # ---------------------------------
-    # BUY
-    # ---------------------------------
+elif final_score >= 55:
+    return "HOLD"
 
-    elif final_score >= 55:
+elif final_score >= 40:
+    return "WEAK"
 
-        return "BUY"
-
-    # ---------------------------------
-    # HOLD
-    # ---------------------------------
-
-    elif final_score >= 40:
-
-        return "HOLD"
-
-    # ---------------------------------
-    # WEAK
-    # ---------------------------------
-
-    elif final_score >= 25:
-
-        return "WEAK"
-
-    # ---------------------------------
-    # AVOID
-    # ---------------------------------
-
-    return "AVOID"
-
+return "AVOID"
 # =====================================
 # FINAL SCORE
 # =====================================
