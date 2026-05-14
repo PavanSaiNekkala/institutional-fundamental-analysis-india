@@ -5,11 +5,27 @@ import warnings
 import sys
 from pathlib import Path
 
+from analytics.market_regime_engine import (
+    generate_market_regime
+)
+
+from ai.institutional_ai_engine import (
+    run_ai_engine
+)
+
+from portfolio.portfolio_optimizer import (
+    optimize_portfolio
+)
+
+from alerts.smart_alert_engine import (
+    generate_alerts
+)
+
 warnings.filterwarnings("ignore")
 
-# =====================================
+# =========================================================
 # FILE PATHS
-# =====================================
+# =========================================================
 
 INPUT_FILE = (
     "data/cache/parquet/"
@@ -26,77 +42,21 @@ PARQUET_OUTPUT = (
     "institutional_rankings.parquet"
 )
 
-# =====================================
+# =========================================================
 # PERCENTILE ENGINE
-# =====================================
+# =========================================================
 
 def percentile_rank(series):
 
     return (
-
         series.rank(
             pct=True
         ) * 100
-
     ).round(2)
 
-# =====================================
-# MARKET REGIME
-# =====================================
-
-def determine_market_regime(df):
-
-    try:
-
-        avg_growth = (
-            df["GROWTH_SCORE"]
-            .mean()
-        )
-
-        avg_quality = (
-            df["QUALITY_SCORE"]
-            .mean()
-        )
-
-        avg_ownership = (
-            df["OWNERSHIP_SCORE"]
-            .mean()
-        )
-
-        composite = (
-
-            avg_growth * 0.35 +
-
-            avg_quality * 0.40 +
-
-            avg_ownership * 0.25
-        )
-
-        if composite >= 70:
-
-            return "STRONG BULLISH"
-
-        elif composite >= 55:
-
-            return "BULLISH"
-
-        elif composite >= 45:
-
-            return "NEUTRAL"
-
-        elif composite >= 35:
-
-            return "WEAK"
-
-        return "BEARISH"
-
-    except Exception:
-
-        return "UNKNOWN"
-
-# =====================================
+# =========================================================
 # SECTOR RELATIVE SCORES
-# =====================================
+# =========================================================
 
 def sector_relative_scores(df):
 
@@ -125,9 +85,9 @@ def sector_relative_scores(df):
 
     return df
 
-# =====================================
+# =========================================================
 # SUBSECTOR RELATIVE SCORES
-# =====================================
+# =========================================================
 
 def subsector_relative_scores(df):
 
@@ -158,9 +118,9 @@ def subsector_relative_scores(df):
 
     return df
 
-# =====================================
+# =========================================================
 # INSTITUTIONAL BREADTH
-# =====================================
+# =========================================================
 
 def institutional_breadth(df):
 
@@ -176,15 +136,16 @@ def institutional_breadth(df):
             +
 
             df["COMPOUNDER_FLAG"]
+
         ) / 3
 
     ) * 100
 
     return df
 
-# =====================================
+# =========================================================
 # LEADERSHIP SCORE
-# =====================================
+# =========================================================
 
 def market_leadership_score(df):
 
@@ -221,9 +182,9 @@ def market_leadership_score(df):
 
     return df
 
-# =====================================
+# =========================================================
 # CONFIDENCE SCORE
-# =====================================
+# =========================================================
 
 def confidence_score(df):
 
@@ -265,9 +226,9 @@ def confidence_score(df):
 
     return df
 
-# =====================================
+# =========================================================
 # FINAL SCORE
-# =====================================
+# =========================================================
 
 def calculate_final_score(df):
 
@@ -301,32 +262,34 @@ def calculate_final_score(df):
 
     )
 
-    # =====================================
+    # =====================================================
     # MARKET CAP BONUS
-    # =====================================
+    # =====================================================
 
-    df["FINAL_SCORE"] += np.where(
+    if "MARKET_CAP" in df.columns:
 
-        df["MARKET_CAP"] >= 2_000_000_000_000,
+        df["FINAL_SCORE"] += np.where(
 
-        8,
+            df["MARKET_CAP"] >= 2_000_000_000_000,
 
-        np.where(
-
-            df["MARKET_CAP"] >= 500_000_000_000,
-
-            5,
+            8,
 
             np.where(
 
-                df["MARKET_CAP"] >= 100_000_000_000,
+                df["MARKET_CAP"] >= 500_000_000_000,
 
-                2,
+                5,
 
-                0
+                np.where(
+
+                    df["MARKET_CAP"] >= 100_000_000_000,
+
+                    2,
+
+                    0
+                )
             )
         )
-    )
 
     df["FINAL_SCORE"] = (
 
@@ -342,9 +305,9 @@ def calculate_final_score(df):
 
     return df
 
-# =====================================
+# =========================================================
 # ELITE FILTER
-# =====================================
+# =========================================================
 
 def elite_filter(df):
 
@@ -352,10 +315,20 @@ def elite_filter(df):
 
         (
             (df["FINAL_SCORE"] >= 85)
+
             &
-            (df["CONFIDENCE_SCORE"] >= 80)
+
+            (
+                df["CONFIDENCE_SCORE"]
+                >= 80
+            )
+
             &
-            (df["COMPOUNDER_FLAG"] == 1)
+
+            (
+                df["COMPOUNDER_FLAG"]
+                == 1
+            )
         ),
 
         1,
@@ -365,9 +338,9 @@ def elite_filter(df):
 
     return df
 
-# =====================================
-# TRADE DECISION ENGINE
-# =====================================
+# =========================================================
+# TRADE DECISION
+# =========================================================
 
 def generate_trade_decision(
     final_score
@@ -399,9 +372,9 @@ def generate_trade_decision(
 
     return "AVOID"
 
-# =====================================
+# =========================================================
 # INSTITUTIONAL GRADE
-# =====================================
+# =========================================================
 
 def assign_institutional_grade(
     score
@@ -429,20 +402,20 @@ def assign_institutional_grade(
 
     return "E"
 
-# =====================================
+# =========================================================
 # MAIN
-# =====================================
+# =========================================================
 
 def main():
 
-    print("=" * 60)
+    print("=" * 70)
 
     print(
-        "FINAL INSTITUTIONAL "
+        "AI INSTITUTIONAL "
         "RANKING ENGINE"
     )
 
-    print("=" * 60)
+    print("=" * 70)
 
     input_path = Path(
         INPUT_FILE
@@ -457,9 +430,9 @@ def main():
 
         sys.exit(1)
 
-    # =====================================
+    # =====================================================
     # LOAD DATA
-    # =====================================
+    # =====================================================
 
     try:
 
@@ -494,9 +467,9 @@ def main():
         f"\nLoaded {len(df)} rows"
     )
 
-    # =====================================
+    # =====================================================
     # CLEAN DATA
-    # =====================================
+    # =====================================================
 
     df = df.replace(
         [np.inf, -np.inf],
@@ -507,9 +480,9 @@ def main():
 
     df = df.drop_duplicates()
 
-    # =====================================
+    # =====================================================
     # VALIDATION
-    # =====================================
+    # =====================================================
 
     if "MARKET_CAP" in df.columns:
 
@@ -517,12 +490,12 @@ def main():
             df["MARKET_CAP"] > 0
         ]
 
-    # =====================================
-    # INSTITUTIONAL ENGINES
-    # =====================================
+    # =====================================================
+    # CORE ENGINES
+    # =====================================================
 
     print(
-        "\nCalculating institutional rankings..."
+        "\nRunning institutional engines..."
     )
 
     df = sector_relative_scores(df)
@@ -539,21 +512,23 @@ def main():
 
     df = elite_filter(df)
 
-    # =====================================
-    # MARKET REGIME
-    # =====================================
+    # =====================================================
+    # MARKET REGIME ENGINE
+    # =====================================================
 
-    market_regime = (
-        determine_market_regime(df)
+    market_data = (
+        generate_market_regime(df)
     )
 
-    df["MARKET_REGIME"] = (
-        market_regime
-    )
+    for key, value in (
+        market_data.items()
+    ):
 
-    # =====================================
+        df[key] = value
+
+    # =====================================================
     # TRADE DECISION
-    # =====================================
+    # =====================================================
 
     df["TRADE_DECISION"] = (
 
@@ -564,9 +539,21 @@ def main():
         )
     )
 
-    # =====================================
+    # =====================================================
+    # AI ENGINE
+    # =====================================================
+
+    print(
+        "\nRunning AI engine..."
+    )
+
+    df, insights = (
+        run_ai_engine(df)
+    )
+
+    # =====================================================
     # RANKING
-    # =====================================
+    # =====================================================
 
     df = df.sort_values(
 
@@ -582,9 +569,9 @@ def main():
         len(df) + 1
     )
 
-    # =====================================
-    # INSTITUTIONAL GRADE
-    # =====================================
+    # =====================================================
+    # INSTITUTIONAL GRADES
+    # =====================================================
 
     df["INSTITUTIONAL_GRADE"] = (
 
@@ -595,9 +582,33 @@ def main():
         )
     )
 
-    # =====================================
+    # =====================================================
+    # PORTFOLIO OPTIMIZER
+    # =====================================================
+
+    print(
+        "\nOptimizing portfolios..."
+    )
+
+    portfolios = (
+        optimize_portfolio(df)
+    )
+
+    # =====================================================
+    # ALERT ENGINE
+    # =====================================================
+
+    print(
+        "\nGenerating smart alerts..."
+    )
+
+    alerts_df = (
+        generate_alerts(df)
+    )
+
+    # =====================================================
     # OUTPUT DIRECTORIES
-    # =====================================
+    # =====================================================
 
     Path(
         "exports"
@@ -613,9 +624,9 @@ def main():
         exist_ok=True
     )
 
-    # =====================================
-    # SAVE OUTPUTS
-    # =====================================
+    # =====================================================
+    # SAVE MAIN OUTPUTS
+    # =====================================================
 
     try:
 
@@ -640,25 +651,89 @@ def main():
 
         sys.exit(1)
 
-    # =====================================
+    # =====================================================
+    # SAVE PORTFOLIOS
+    # =====================================================
+
+    for name, portfolio_df in (
+        portfolios.items()
+    ):
+
+        output_path = (
+
+            f"exports/"
+            f"{name.lower()}.csv"
+        )
+
+        portfolio_df.to_csv(
+            output_path,
+            index=False
+        )
+
+        print(
+            f"\nSaved: {output_path}"
+        )
+
+    # =====================================================
+    # SAVE ALERTS
+    # =====================================================
+
+    alerts_df.to_csv(
+
+        "exports/smart_alerts.csv",
+
+        index=False
+    )
+
+    print(
+        "\nSaved: exports/smart_alerts.csv"
+    )
+
+    # =====================================================
     # SUMMARY
-    # =====================================
+    # =====================================================
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
 
     print(
-        "INSTITUTIONAL RANKING COMPLETE"
+        "AI INSTITUTIONAL "
+        "PIPELINE COMPLETE"
     )
 
-    print("=" * 60)
+    print("=" * 70)
 
     print(
-        f"Market Regime: "
-        f"{market_regime}"
+        f"\nMarket Regime: "
+        f"{market_data['MARKET_REGIME']}"
     )
 
     print(
-        f"\nFinal Dataset Size: "
+        f"\nRisk Regime: "
+        f"{market_data['RISK_REGIME']}"
+    )
+
+    print(
+        f"\nVolatility Regime: "
+        f"{market_data['VOLATILITY_REGIME']}"
+    )
+
+    print(
+        f"\nLeading Sector: "
+        f"{market_data['LEADING_SECTOR']}"
+    )
+
+    print(
+        f"\nMarket Breadth: "
+        f"{market_data['MARKET_BREADTH']}"
+    )
+
+    print(
+        f"\nSmart Money Score: "
+        f"{market_data['SMART_MONEY_SCORE']}"
+    )
+
+    print(
+        f"\nDataset Size: "
         f"{len(df)}"
     )
 
@@ -667,9 +742,20 @@ def main():
     )
 
     print(
-        df["TRADE_DECISION"]
-        .value_counts()
+        df[
+            "TRADE_DECISION"
+        ].value_counts()
     )
+
+    print(
+        "\nAI MARKET INSIGHTS:\n"
+    )
+
+    for insight in insights:
+
+        print(
+            f"• {insight}"
+        )
 
     print(
         "\nTop Institutional Stocks:\n"
@@ -684,6 +770,7 @@ def main():
                 "SECTOR",
                 "SUBSECTOR",
                 "FINAL_SCORE",
+                "AI_CONVICTION_SCORE",
                 "CONFIDENCE_SCORE",
                 "TRADE_DECISION",
                 "INSTITUTIONAL_GRADE",
@@ -705,9 +792,9 @@ def main():
         f"{PARQUET_OUTPUT}"
     )
 
-# =====================================
+# =========================================================
 # ENTRY
-# =====================================
+# =========================================================
 
 if __name__ == "__main__":
 
@@ -718,7 +805,7 @@ if __name__ == "__main__":
     except Exception as e:
 
         print(
-            "\nFATAL RANKING ENGINE ERROR"
+            "\nFATAL PIPELINE ERROR"
         )
 
         print(str(e))
