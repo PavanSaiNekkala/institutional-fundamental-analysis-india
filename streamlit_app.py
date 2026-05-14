@@ -1,121 +1,62 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
 import warnings
 import traceback
-import subprocess
-import sys
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
-# =========================================
+# =========================================================
 # PAGE CONFIG
-# =========================================
+# =========================================================
 
 st.set_page_config(
     page_title="Institutional Analytics Engine",
     page_icon="📈",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# =========================================
+# =========================================================
+# CUSTOM CSS
+# =========================================================
+
+st.markdown("""
+<style>
+
+.main {
+    background-color: #0E1117;
+}
+
+.metric-container {
+    background-color: #1E1E1E;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+.stDataFrame {
+    border-radius: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
 # FILE PATHS
-# =========================================
+# =========================================================
 
 PARQUET_FILE = (
     "data/cache/parquet/"
     "institutional_rankings.parquet"
 )
 
-# =========================================
-# AUTO PIPELINE EXECUTION
-# =========================================
-
-if not Path(PARQUET_FILE).exists():
-
-    st.warning(
-        "Parquet dataset missing.\n"
-        "Running institutional pipeline..."
-    )
-
-    pipeline_steps = [
-
-        "collectors/screener_collector.py",
-
-        "preprocessing/cleaner.py",
-
-        "scoring/growth_score.py",
-
-        "scoring/quality_score.py",
-
-        "scoring/ownership_score.py",
-
-        "ranking/final_ranking_engine.py"
-    ]
-
-    progress_bar = st.progress(0)
-
-    status_text = st.empty()
-
-    log_container = st.empty()
-
-    for index, step in enumerate(pipeline_steps):
-
-        status_text.info(
-            f"Running: python {step}"
-        )
-
-        result = subprocess.run(
-
-            [
-                sys.executable
-            ] + step.split(),
-
-            capture_output=True,
-            text=True
-        )
-
-        progress = int(
-            ((index + 1) / len(pipeline_steps))
-            * 100
-        )
-
-        progress_bar.progress(progress)
-
-        # Show logs
-        if result.stdout:
-
-            log_container.code(
-                result.stdout
-            )
-
-        # Handle errors
-        if result.returncode != 0:
-
-            st.error(
-                f"Pipeline failed at:\n{step}"
-            )
-
-            if result.stderr:
-
-                st.code(
-                    result.stderr
-                )
-
-            st.stop()
-
-    progress_bar.empty()
-
-    status_text.success(
-        "Pipeline execution complete."
-    )
-
-# =========================================
+# =========================================================
 # LOAD DATA
-# =========================================
+# =========================================================
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 
 def load_data():
 
@@ -124,15 +65,51 @@ def load_data():
         if not Path(PARQUET_FILE).exists():
 
             st.error(
-                f"Missing parquet file:\n"
-                f"{PARQUET_FILE}"
+                f"""
+                Missing parquet dataset:
+
+                {PARQUET_FILE}
+
+                Run pipeline first.
+                """
             )
 
             return pd.DataFrame()
 
-        df = pd.read_parquet(
-            PARQUET_FILE
+        df = pd.read_parquet(PARQUET_FILE)
+
+        # =====================================
+        # DATA CLEANING
+        # =====================================
+
+        df = df.replace(
+            [np.inf, -np.inf],
+            np.nan
         )
+
+        df = df.drop_duplicates()
+
+        # Remove invalid market caps
+        if "MARKET_CAP" in df.columns:
+
+            df = df[
+                df["MARKET_CAP"] > 0
+            ]
+
+        # Remove invalid scores
+        if "FINAL_SCORE" in df.columns:
+
+            df = df[
+                df["FINAL_SCORE"].notna()
+            ]
+
+        # Sort rankings
+        if "FINAL_SCORE" in df.columns:
+
+            df = df.sort_values(
+                by="FINAL_SCORE",
+                ascending=False
+            )
 
         return df
 
@@ -146,10 +123,9 @@ def load_data():
 
         return pd.DataFrame()
 
-
-# =========================================
+# =========================================================
 # LOAD DATAFRAME
-# =========================================
+# =========================================================
 
 df = load_data()
 
@@ -157,59 +133,59 @@ if df.empty:
 
     st.stop()
 
-# =========================================
+# =========================================================
 # HEADER
-# =========================================
+# =========================================================
 
 st.title(
     "📈 Institutional Analytics Dashboard"
 )
 
 st.markdown(
-    "Enterprise-grade institutional "
-    "stock analysis engine"
+    """
+    Enterprise-grade institutional
+    stock analysis and ranking platform
+    """
 )
 
-# =========================================
+# =========================================================
 # MARKET REGIME
-# =========================================
+# =========================================================
 
 market_regime = (
-    df["MARKET_REGIME"]
-    .iloc[0]
+    df["MARKET_REGIME"].iloc[0]
+    if "MARKET_REGIME" in df.columns
+    else "UNKNOWN"
 )
 
 if market_regime == "BULLISH":
 
     st.success(
-        f"Market Regime: "
-        f"{market_regime}"
+        f"🟢 Market Regime: {market_regime}"
     )
 
 elif market_regime == "NEUTRAL":
 
     st.warning(
-        f"Market Regime: "
-        f"{market_regime}"
+        f"🟡 Market Regime: {market_regime}"
     )
 
 else:
 
     st.error(
-        f"Market Regime: "
-        f"{market_regime}"
+        f"🔴 Market Regime: {market_regime}"
     )
 
-# =========================================
+# =========================================================
 # METRICS
-# =========================================
+# =========================================================
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
 
     st.metric(
-        "Stocks Analyzed",
+        "Stocks",
         len(df)
     )
 
@@ -217,9 +193,7 @@ with col2:
 
     strong_buy_count = len(
         df[
-            df[
-                "TRADE_DECISION"
-            ]
+            df["TRADE_DECISION"]
             == "INSTITUTIONAL STRONG BUY"
         ]
     )
@@ -253,64 +227,80 @@ with col4:
         top_score
     )
 
-# =========================================
-# SIDEBAR FILTERS
-# =========================================
+with col5:
 
-st.sidebar.header(
-    "Institutional Filters"
+    sectors = (
+        df["SECTOR"]
+        .nunique()
+        if "SECTOR" in df.columns
+        else 0
+    )
+
+    st.metric(
+        "Sectors",
+        sectors
+    )
+
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+st.sidebar.title(
+    "⚙ Institutional Filters"
 )
 
 sector_filter = st.sidebar.multiselect(
     "Sector",
-    options=sorted(
+    sorted(
         df["SECTOR"]
         .dropna()
         .unique()
-    ),
-    default=[]
+    )
 )
 
-market_cap_filter = (
-    st.sidebar.multiselect(
-        "Market Cap Category",
-        options=sorted(
-            df[
-                "MARKET_CAP_CATEGORY"
-            ]
-            .dropna()
-            .unique()
-        ),
-        default=[]
+market_cap_filter = st.sidebar.multiselect(
+    "Market Cap Category",
+    sorted(
+        df[
+            "MARKET_CAP_CATEGORY"
+        ]
+        .dropna()
+        .unique()
     )
 )
 
 trade_filter = st.sidebar.multiselect(
     "Trade Decision",
-    options=sorted(
+    sorted(
         df[
             "TRADE_DECISION"
         ]
         .dropna()
         .unique()
-    ),
-    default=[]
+    )
 )
 
 min_score = st.sidebar.slider(
     "Minimum Final Score",
     min_value=0,
     max_value=100,
-    value=40
+    value=50
+)
+
+top_n = st.sidebar.slider(
+    "Top N Stocks",
+    min_value=10,
+    max_value=500,
+    value=100
 )
 
 search_stock = st.sidebar.text_input(
     "Search Symbol"
 )
 
-# =========================================
-# APPLY FILTERS
-# =========================================
+# =========================================================
+# FILTERS
+# =========================================================
 
 filtered_df = df.copy()
 
@@ -340,9 +330,8 @@ if trade_filter:
     ]
 
 filtered_df = filtered_df[
-    filtered_df[
-        "FINAL_SCORE"
-    ] >= min_score
+    filtered_df["FINAL_SCORE"]
+    >= min_score
 ]
 
 if search_stock:
@@ -357,12 +346,14 @@ if search_stock:
         )
     ]
 
-# =========================================
-# TOP PICKS
-# =========================================
+filtered_df = filtered_df.head(top_n)
+
+# =========================================================
+# TOP PICKS TABLE
+# =========================================================
 
 st.subheader(
-    "🏆 Top Institutional Picks"
+    "🏆 Institutional Leaderboard"
 )
 
 columns_to_show = [
@@ -383,7 +374,6 @@ columns_to_show = [
 available_columns = [
 
     col for col in columns_to_show
-
     if col in filtered_df.columns
 ]
 
@@ -392,15 +382,35 @@ st.dataframe(
         available_columns
     ],
     use_container_width=True,
-    height=600
+    height=650
 )
 
-# =========================================
-# TOP 20 CHART
-# =========================================
+# =========================================================
+# SCORE DISTRIBUTION
+# =========================================================
 
 st.subheader(
-    "📊 Top 20 Institutional Stocks"
+    "📊 Final Score Distribution"
+)
+
+fig = px.histogram(
+    filtered_df,
+    x="FINAL_SCORE",
+    nbins=30,
+    title="Institutional Score Distribution"
+)
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+# =========================================================
+# TOP STOCKS CHART
+# =========================================================
+
+st.subheader(
+    "🚀 Top Institutional Stocks"
 )
 
 chart_df = (
@@ -412,39 +422,48 @@ chart_df = (
     .head(20)
 )
 
-if not chart_df.empty:
-
-    st.bar_chart(
-        data=chart_df.set_index(
-            "SYMBOL"
-        )[
-            "FINAL_SCORE"
-        ]
-    )
-
-# =========================================
-# SECTOR DISTRIBUTION
-# =========================================
-
-st.subheader(
-    "🏭 Sector Distribution"
+fig_top = px.bar(
+    chart_df,
+    x="SYMBOL",
+    y="FINAL_SCORE",
+    color="FINAL_SCORE",
+    title="Top 20 Institutional Stocks"
 )
 
-sector_counts = (
-    filtered_df["SECTOR"]
-    .value_counts()
+st.plotly_chart(
+    fig_top,
+    use_container_width=True
+)
+
+# =========================================================
+# SECTOR ANALYTICS
+# =========================================================
+
+st.subheader(
+    "🏭 Sector Strength Analysis"
+)
+
+sector_scores = (
+    filtered_df
+    .groupby("SECTOR")["FINAL_SCORE"]
+    .mean()
+    .sort_values(ascending=False)
     .head(15)
 )
 
-if not sector_counts.empty:
+fig_sector = px.bar(
+    sector_scores,
+    title="Top Sector Scores"
+)
 
-    st.bar_chart(
-        sector_counts
-    )
+st.plotly_chart(
+    fig_sector,
+    use_container_width=True
+)
 
-# =========================================
+# =========================================================
 # TRADE DECISION BREAKDOWN
-# =========================================
+# =========================================================
 
 st.subheader(
     "📌 Trade Decision Breakdown"
@@ -457,14 +476,20 @@ trade_counts = (
     .value_counts()
 )
 
-st.dataframe(
-    trade_counts,
+fig_trade = px.pie(
+    values=trade_counts.values,
+    names=trade_counts.index,
+    title="Trade Decision Distribution"
+)
+
+st.plotly_chart(
+    fig_trade,
     use_container_width=True
 )
 
-# =========================================
-# INSTITUTIONAL GRADE DISTRIBUTION
-# =========================================
+# =========================================================
+# INSTITUTIONAL GRADE
+# =========================================================
 
 st.subheader(
     "🏅 Institutional Grade Distribution"
@@ -477,16 +502,36 @@ grade_counts = (
     .value_counts()
 )
 
-st.bar_chart(
-    grade_counts
+fig_grade = px.bar(
+    x=grade_counts.index,
+    y=grade_counts.values,
+    title="Institutional Grades"
 )
 
-# =========================================
+st.plotly_chart(
+    fig_grade,
+    use_container_width=True
+)
+
+# =========================================================
+# RAW DATA
+# =========================================================
+
+with st.expander(
+    "🔍 View Raw Dataset"
+):
+
+    st.dataframe(
+        filtered_df,
+        use_container_width=True
+    )
+
+# =========================================================
 # DOWNLOADS
-# =========================================
+# =========================================================
 
 st.subheader(
-    "⬇️ Export Results"
+    "⬇ Export Institutional Dataset"
 )
 
 csv_data = filtered_df.to_csv(
@@ -494,7 +539,7 @@ csv_data = filtered_df.to_csv(
 ).encode("utf-8")
 
 st.download_button(
-    label="Download Institutional Rankings CSV",
+    label="Download CSV",
     data=csv_data,
     file_name=(
         "institutional_rankings.csv"
@@ -502,13 +547,15 @@ st.download_button(
     mime="text/csv"
 )
 
-# =========================================
+# =========================================================
 # FOOTER
-# =========================================
+# =========================================================
 
 st.markdown("---")
 
 st.caption(
-    "Enterprise Institutional "
-    "Analytics Platform"
+    """
+    Institutional Quant Research Platform
+    | Built with Python + Streamlit + Plotly
+    """
 )
