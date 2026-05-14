@@ -564,6 +564,93 @@ def main():
             CSV_OUTPUT,
             index=False
         )
+        # =========================================================
+# CLEAN INVALID NUMERIC VALUES
+# =========================================================
+
+import numpy as np
+
+numeric_columns = [
+
+    "PE_RATIO",
+    "ROE",
+    "ROCE",
+    "DIVIDEND_YIELD",
+    "DEBT_TO_EQUITY",
+    "MARKET_CAP",
+    "PROMOTER_HOLDING",
+    "FII_HOLDING",
+    "DII_HOLDING",
+]
+
+for col in numeric_columns:
+
+    if col in df.columns:
+
+        df[col] = (
+            df[col]
+            .astype(str)
+            .replace(
+                [
+                    "Infinity",
+                    "-Infinity",
+                    "inf",
+                    "-inf",
+                    "nan",
+                    "None",
+                    "",
+                ],
+                np.nan,
+            )
+        )
+
+        df[col] = pd.to_numeric(
+            df[col],
+            errors="coerce"
+        )
+
+        # =========================================================
+        # UNIVERSAL PARQUET SANITIZER
+        # =========================================================
+
+        import numpy as np
+
+        for col in df.columns:
+
+            try:
+
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .replace(
+                        [
+                            "Infinity",
+                            "-Infinity",
+                            "inf",
+                            "-inf",
+                            "None",
+                            "nan",
+                            "",
+                        ],
+                        np.nan,
+                    )
+                )
+
+                converted = pd.to_numeric(
+                    df[col],
+                    errors="ignore"
+                )
+
+                df[col] = converted
+
+            except Exception:
+
+                pass
+
+        df = df.replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
 
         df.to_parquet(
             PARQUET_OUTPUT,
