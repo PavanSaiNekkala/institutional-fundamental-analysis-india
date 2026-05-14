@@ -651,11 +651,83 @@ for col in numeric_columns:
             [np.inf, -np.inf],
             np.nan
         )
+        # =========================================================
+        # FINAL DATAFRAME SANITIZATION
+        # =========================================================
+
+        import numpy as np
+
+        print("\nCleaning dataframe before parquet export...")
+
+        INVALID_VALUES = [
+
+            "Infinity",
+            "-Infinity",
+            "inf",
+            "-inf",
+            "INF",
+            "-INF",
+            "NaN",
+            "nan",
+            "None",
+            "none",
+            "NULL",
+            "null",
+            "",
+        ]
+
+        df.replace(
+            INVALID_VALUES,
+            np.nan,
+            inplace=True
+        )
+
+        df.replace(
+            [np.inf, -np.inf],
+            np.nan,
+            inplace=True
+        )
+
+        TEXT_COLUMNS = [
+
+            "SYMBOL",
+            "SECTOR",
+            "SUBSECTOR",
+            "INDUSTRY",
+            "COMPANY_NAME",
+        ]
+
+        for col in df.columns:
+        
+            if col in TEXT_COLUMNS:
+                continue
+
+            try:
+        
+                df[col] = pd.to_numeric(
+                    df[col],
+                    errors="ignore"
+                )
+
+            except Exception as e:
+
+                print(f"Skipped conversion for {col}: {e}")
+
+for col in df.columns:
+
+    if df[col].dtype == "object":
+
+        df[col] = df[col].astype(str)
+
+        print("\nSaving parquet dataset...")
 
         df.to_parquet(
-            PARQUET_OUTPUT,
-            index=False
+            output_path,
+            index=False,
+            engine="pyarrow"
         )
+
+        print(f"\nSaved parquet successfully -> {output_path}")
 
         print(
             "\nSaved CSV + "
