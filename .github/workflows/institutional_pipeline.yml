@@ -2,10 +2,10 @@ name: Institutional Data Pipeline
 
 on:
 
+  workflow_dispatch:
+
   schedule:
     - cron: "30 2 * * *"
-
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -33,14 +33,33 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
+
         with:
           python-version: "3.12"
 
       # =====================================================
-      # DEPENDENCIES
+      # CACHE
+      # =====================================================
+
+      - name: Cache Pip Dependencies
+
+        uses: actions/cache@v4
+
+        with:
+
+          path: ~/.cache/pip
+
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # =====================================================
+      # INSTALL
       # =====================================================
 
       - name: Install Dependencies
+
         run: |
 
           python -m pip install --upgrade pip
@@ -51,58 +70,82 @@ jobs:
       # CREATE DIRECTORIES
       # =====================================================
 
-      - name: Create Directories
+      - name: Create Required Directories
+
         run: |
 
           mkdir -p data/cache/parquet
+
           mkdir -p exports
+
+          mkdir -p logs
 
       # =====================================================
       # PIPELINE
       # =====================================================
 
       - name: Run NSE Collector
+
         run: |
 
           python -m collectors.nse_collector
 
       - name: Run Screener Collector
+
         run: |
 
           python -m collectors.screener_collector
 
       - name: Run Cleaner
+
         run: |
 
           python -m preprocessing.cleaner
 
       - name: Run Growth Score
+
         run: |
 
           python -m scoring.growth_score
 
       - name: Run Quality Score
+
         run: |
 
           python -m scoring.quality_score
 
       - name: Run Valuation Score
+
         run: |
 
           python -m scoring.valuation_score
 
       - name: Run Ownership Score
+
         run: |
 
           python -m scoring.ownership_score
 
       - name: Run Final Ranking Engine
+
         run: |
 
           python -m ranking.final_ranking_engine
 
       # =====================================================
-      # COMMIT OUTPUTS
+      # VERIFY OUTPUTS
+      # =====================================================
+
+      - name: Verify Outputs
+
+        run: |
+
+          ls -R data/cache/parquet || true
+
+          ls -R exports || true
+
+      # =====================================================
+      # COMMIT GENERATED FILES
       # =====================================================
 
       - name: Commit Generated Files
