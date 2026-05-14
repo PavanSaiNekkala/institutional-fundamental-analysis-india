@@ -11,8 +11,7 @@ requests==2.32.3
 beautifulsoup4==4.13.4
 lxml==5.4.0
 openpyxl==3.1.5
-xgboost==3.0.0
-lightgbm==4.6.0
-tensorflow==2.19.0
-torch==2.7.0
-transformers==4.51.3
+sqlalchemy==2.0.40
+psycopg2-binary==2.9.10
+schedule==1.2.2
+python-telegram-bot==22.0
