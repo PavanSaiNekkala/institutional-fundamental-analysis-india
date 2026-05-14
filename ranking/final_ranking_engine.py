@@ -27,6 +27,20 @@ PARQUET_OUTPUT = (
 )
 
 # =====================================
+# PERCENTILE ENGINE
+# =====================================
+
+def percentile_rank(series):
+
+    return (
+
+        series.rank(
+            pct=True
+        ) * 100
+
+    ).round(2)
+
+# =====================================
 # MARKET REGIME
 # =====================================
 
@@ -58,7 +72,11 @@ def determine_market_regime(df):
             avg_ownership * 0.25
         )
 
-        if composite >= 65:
+        if composite >= 70:
+
+            return "STRONG BULLISH"
+
+        elif composite >= 55:
 
             return "BULLISH"
 
@@ -66,11 +84,286 @@ def determine_market_regime(df):
 
             return "NEUTRAL"
 
+        elif composite >= 35:
+
+            return "WEAK"
+
         return "BEARISH"
 
     except Exception:
 
         return "UNKNOWN"
+
+# =====================================
+# SECTOR RELATIVE SCORES
+# =====================================
+
+def sector_relative_scores(df):
+
+    score_columns = [
+
+        "GROWTH_SCORE",
+        "QUALITY_SCORE",
+        "OWNERSHIP_SCORE"
+
+    ]
+
+    for col in score_columns:
+
+        if col in df.columns:
+
+            df[
+                f"{col}_SECTOR_REL"
+            ] = (
+
+                df.groupby("SECTOR")[col]
+
+                .transform(
+                    percentile_rank
+                )
+            )
+
+    return df
+
+# =====================================
+# SUBSECTOR RELATIVE SCORES
+# =====================================
+
+def subsector_relative_scores(df):
+
+    score_columns = [
+
+        "GROWTH_SCORE",
+        "QUALITY_SCORE",
+        "OWNERSHIP_SCORE"
+
+    ]
+
+    for col in score_columns:
+
+        if col in df.columns:
+
+            df[
+                f"{col}_SUBSECTOR_REL"
+            ] = (
+
+                df.groupby(
+                    "SUBSECTOR"
+                )[col]
+
+                .transform(
+                    percentile_rank
+                )
+            )
+
+    return df
+
+# =====================================
+# INSTITUTIONAL BREADTH
+# =====================================
+
+def institutional_breadth(df):
+
+    df["INSTITUTIONAL_BREADTH"] = (
+
+        (
+            df["HIGH_QUALITY_FLAG"]
+
+            +
+
+            df["HIGH_GROWTH_FLAG"]
+
+            +
+
+            df["COMPOUNDER_FLAG"]
+        ) / 3
+
+    ) * 100
+
+    return df
+
+# =====================================
+# LEADERSHIP SCORE
+# =====================================
+
+def market_leadership_score(df):
+
+    leadership = (
+
+        (
+            df["GROWTH_SCORE"]
+            * 0.40
+        )
+
+        +
+
+        (
+            df["QUALITY_SCORE"]
+            * 0.35
+        )
+
+        +
+
+        (
+            df["OWNERSHIP_SCORE"]
+            * 0.25
+        )
+
+    )
+
+    df["LEADERSHIP_SCORE"] = (
+
+        percentile_rank(
+            leadership
+        )
+
+    )
+
+    return df
+
+# =====================================
+# CONFIDENCE SCORE
+# =====================================
+
+def confidence_score(df):
+
+    df["CONFIDENCE_SCORE"] = (
+
+        (
+            df["LEADERSHIP_SCORE"]
+            * 0.40
+        )
+
+        +
+
+        (
+            df[
+                "INSTITUTIONAL_BREADTH"
+            ]
+            * 0.30
+        )
+
+        +
+
+        (
+            df[
+                "GROWTH_SCORE_SECTOR_REL"
+            ]
+            * 0.15
+        )
+
+        +
+
+        (
+            df[
+                "QUALITY_SCORE_SECTOR_REL"
+            ]
+            * 0.15
+        )
+
+    ).round(2)
+
+    return df
+
+# =====================================
+# FINAL SCORE
+# =====================================
+
+def calculate_final_score(df):
+
+    df["FINAL_SCORE"] = (
+
+        (
+            df["CONFIDENCE_SCORE"]
+            * 0.40
+        )
+
+        +
+
+        (
+            df["LEADERSHIP_SCORE"]
+            * 0.25
+        )
+
+        +
+
+        (
+            df["GROWTH_SCORE"]
+            * 0.20
+        )
+
+        +
+
+        (
+            df["QUALITY_SCORE"]
+            * 0.15
+        )
+
+    )
+
+    # =====================================
+    # MARKET CAP BONUS
+    # =====================================
+
+    df["FINAL_SCORE"] += np.where(
+
+        df["MARKET_CAP"] >= 2_000_000_000_000,
+
+        8,
+
+        np.where(
+
+            df["MARKET_CAP"] >= 500_000_000_000,
+
+            5,
+
+            np.where(
+
+                df["MARKET_CAP"] >= 100_000_000_000,
+
+                2,
+
+                0
+            )
+        )
+    )
+
+    df["FINAL_SCORE"] = (
+
+        df["FINAL_SCORE"]
+
+        .clip(
+            lower=0,
+            upper=100
+        )
+
+        .round(2)
+    )
+
+    return df
+
+# =====================================
+# ELITE FILTER
+# =====================================
+
+def elite_filter(df):
+
+    df["ELITE_FLAG"] = np.where(
+
+        (
+            (df["FINAL_SCORE"] >= 85)
+            &
+            (df["CONFIDENCE_SCORE"] >= 80)
+            &
+            (df["COMPOUNDER_FLAG"] == 1)
+        ),
+
+        1,
+
+        0
+    )
+
+    return df
 
 # =====================================
 # TRADE DECISION ENGINE
@@ -80,13 +373,19 @@ def generate_trade_decision(
     final_score
 ):
 
-    if final_score >= 85:
+    if final_score >= 90:
+
+        return (
+            "INSTITUTIONAL ELITE"
+        )
+
+    elif final_score >= 82:
 
         return (
             "INSTITUTIONAL STRONG BUY"
         )
 
-    elif final_score >= 72:
+    elif final_score >= 70:
 
         return "BUY"
 
@@ -99,85 +398,6 @@ def generate_trade_decision(
         return "WEAK"
 
     return "AVOID"
-# =====================================
-# FINAL SCORE
-# =====================================
-
-def calculate_final_score(row):
-
-    growth = row.get(
-        "GROWTH_SCORE",
-        0
-    )
-
-    quality = row.get(
-        "QUALITY_SCORE",
-        0
-    )
-
-    ownership = row.get(
-        "OWNERSHIP_SCORE",
-        0
-    )
-
-    market_cap = row.get(
-        "MARKET_CAP",
-        0
-    )
-
-    # =====================================
-    # WEIGHTED INSTITUTIONAL MODEL
-    # =====================================
-
-    final_score = (
-
-        growth * 0.35 +
-
-        quality * 0.40 +
-
-        ownership * 0.25
-    )
-
-    # =====================================
-    # MARKET CAP BONUS
-    # =====================================
-
-    try:
-
-        if market_cap >= 2_000_000_000_000:
-
-            final_score += 8
-
-        elif market_cap >= 500_000_000_000:
-
-            final_score += 5
-
-        elif market_cap >= 100_000_000_000:
-
-            final_score += 2
-
-    except Exception:
-
-        pass
-
-    # =====================================
-    # NORMALIZATION
-    # =====================================
-
-    final_score = min(
-        final_score,
-        100
-    )
-
-    final_score = max(
-        final_score,
-        0
-    )
-
-    return round(
-        final_score,
-        2
-    )
 
 # =====================================
 # INSTITUTIONAL GRADE
@@ -187,19 +407,23 @@ def assign_institutional_grade(
     score
 ):
 
-    if score >= 75:
+    if score >= 85:
+
+        return "A+"
+
+    elif score >= 75:
 
         return "A"
 
-    elif score >= 60:
+    elif score >= 65:
 
         return "B"
 
-    elif score >= 45:
+    elif score >= 50:
 
         return "C"
 
-    elif score >= 30:
+    elif score >= 35:
 
         return "D"
 
@@ -220,10 +444,6 @@ def main():
 
     print("=" * 60)
 
-    # ---------------------------------
-    # FILE CHECK
-    # ---------------------------------
-
     input_path = Path(
         INPUT_FILE
     )
@@ -231,20 +451,20 @@ def main():
     if not input_path.exists():
 
         print(
-            f"ERROR: Missing input parquet -> "
+            f"ERROR: Missing parquet -> "
             f"{INPUT_FILE}"
         )
 
         sys.exit(1)
 
-    # ---------------------------------
+    # =====================================
     # LOAD DATA
-    # ---------------------------------
+    # =====================================
 
     try:
 
         print(
-            "\nLoading parquet data..."
+            "\nLoading parquet..."
         )
 
         df = pd.read_parquet(
@@ -274,9 +494,9 @@ def main():
         f"\nLoaded {len(df)} rows"
     )
 
-    # ---------------------------------
+    # =====================================
     # CLEAN DATA
-    # ---------------------------------
+    # =====================================
 
     df = df.replace(
         [np.inf, -np.inf],
@@ -284,8 +504,11 @@ def main():
     )
 
     df = df.fillna(0)
+
+    df = df.drop_duplicates()
+
     # =====================================
-    # DATA VALIDATION
+    # VALIDATION
     # =====================================
 
     if "MARKET_CAP" in df.columns:
@@ -294,25 +517,27 @@ def main():
             df["MARKET_CAP"] > 0
         ]
 
-    df = df.drop_duplicates()
-
-    df = df[
-        df["FINAL_SCORE"].notna()
-    ]
-
     # =====================================
-    # FINAL SCORE
+    # INSTITUTIONAL ENGINES
     # =====================================
 
     print(
-        "\nCalculating final "
-        "institutional rankings..."
+        "\nCalculating institutional rankings..."
     )
 
-    df["FINAL_SCORE"] = df.apply(
-        calculate_final_score,
-        axis=1
-    )
+    df = sector_relative_scores(df)
+
+    df = subsector_relative_scores(df)
+
+    df = institutional_breadth(df)
+
+    df = market_leadership_score(df)
+
+    df = confidence_score(df)
+
+    df = calculate_final_score(df)
+
+    df = elite_filter(df)
 
     # =====================================
     # MARKET REGIME
@@ -331,7 +556,9 @@ def main():
     # =====================================
 
     df["TRADE_DECISION"] = (
+
         df["FINAL_SCORE"]
+
         .apply(
             generate_trade_decision
         )
@@ -342,12 +569,16 @@ def main():
     # =====================================
 
     df = df.sort_values(
+
         by="FINAL_SCORE",
+
         ascending=False
     )
 
     df["RANK"] = range(
+
         1,
+
         len(df) + 1
     )
 
@@ -356,14 +587,16 @@ def main():
     # =====================================
 
     df["INSTITUTIONAL_GRADE"] = (
+
         df["FINAL_SCORE"]
+
         .apply(
             assign_institutional_grade
         )
     )
 
     # =====================================
-    # CREATE OUTPUT DIRS
+    # OUTPUT DIRECTORIES
     # =====================================
 
     Path(
@@ -414,8 +647,7 @@ def main():
     print("\n" + "=" * 60)
 
     print(
-        "INSTITUTIONAL RANKING "
-        "COMPLETE"
+        "INSTITUTIONAL RANKING COMPLETE"
     )
 
     print("=" * 60)
@@ -444,16 +676,23 @@ def main():
     )
 
     print(
+
         df[
             [
                 "RANK",
                 "SYMBOL",
+                "SECTOR",
+                "SUBSECTOR",
                 "FINAL_SCORE",
+                "CONFIDENCE_SCORE",
                 "TRADE_DECISION",
                 "INSTITUTIONAL_GRADE",
-                "MARKET_CAP_CATEGORY"
+                "ELITE_FLAG"
             ]
-        ].head(25)
+        ]
+
+        .head(25)
+
     )
 
     print(
