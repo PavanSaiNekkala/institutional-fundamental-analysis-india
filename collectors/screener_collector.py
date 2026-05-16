@@ -63,9 +63,9 @@ FAILED_OUTPUT = (
 # STABLE SETTINGS
 # =========================================================
 
-MAX_STOCKS = 1200
-MAX_WORKERS = 2
-REQUEST_DELAY = 1.2
+MAX_STOCKS = 2699
+MAX_WORKERS = 8
+REQUEST_DELAY = 1.5
 
 # =========================================================
 # SAFE NUMERIC
