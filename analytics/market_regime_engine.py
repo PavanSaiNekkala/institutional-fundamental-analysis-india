@@ -7,6 +7,14 @@ import numpy as np
 
 def calculate_market_breadth(df):
 
+    if "FINAL_SCORE" not in df.columns:
+
+        print(
+            "WARNING: FINAL_SCORE missing"
+        )
+
+        return 0
+
     advancing = len(
 
         df[
@@ -48,6 +56,22 @@ def calculate_market_breadth(df):
 
 def sector_momentum(df):
 
+    if "SECTOR" not in df.columns:
+
+        print(
+            "WARNING: SECTOR column missing"
+        )
+
+        return pd.Series(dtype=float)
+
+    if "FINAL_SCORE" not in df.columns:
+
+        print(
+            "WARNING: FINAL_SCORE missing"
+        )
+
+        return pd.Series(dtype=float)
+
     sector_scores = (
 
         df
@@ -71,10 +95,20 @@ def sector_momentum(df):
 
 def volatility_regime(df):
 
+    if "FINAL_SCORE" not in df.columns:
+
+        return "UNKNOWN"
+
     std_dev = (
+
         df["FINAL_SCORE"]
+
         .std()
     )
+
+    if pd.isna(std_dev):
+
+        return "UNKNOWN"
 
     if std_dev >= 25:
 
@@ -91,6 +125,62 @@ def volatility_regime(df):
 # =========================================================
 
 def smart_money_flow(df):
+
+    # =====================================
+    # SAFETY CHECKS
+    # =====================================
+
+    if "TRADE_DECISION" not in df.columns:
+
+        print(
+            "WARNING: TRADE_DECISION missing"
+        )
+
+        print(
+            "Creating fallback signals..."
+        )
+
+        # ---------------------------------
+        # FALLBACK SIGNALS
+        # ---------------------------------
+
+        if "FINAL_SCORE" in df.columns:
+
+            df["TRADE_DECISION"] = np.where(
+
+                df["FINAL_SCORE"] >= 75,
+                "INSTITUTIONAL STRONG BUY",
+
+                np.where(
+                    df["FINAL_SCORE"] >= 60,
+                    "BUY",
+                    "AVOID"
+                )
+            )
+
+        else:
+
+            df["TRADE_DECISION"] = "AVOID"
+
+    # -------------------------------------
+    # ELITE FLAG SAFETY
+    # -------------------------------------
+
+    if "ELITE_FLAG" not in df.columns:
+
+        df["ELITE_FLAG"] = 0
+
+    # -------------------------------------
+    # COMPOUNDER FLAG SAFETY
+    # -------------------------------------
+
+    if "COMPOUNDER_FLAG" not in df.columns:
+
+        df["COMPOUNDER_FLAG"] = 0
+
+    # =====================================
+    # COUNTS
+    # =====================================
 
     institutional = len(
 
@@ -124,6 +214,10 @@ def smart_money_flow(df):
 
     )
 
+    # =====================================
+    # SCORE
+    # =====================================
+
     score = (
 
         (
@@ -153,6 +247,10 @@ def smart_money_flow(df):
 # =========================================================
 
 def risk_regime(df):
+
+    if "SECTOR" not in df.columns:
+
+        return "UNKNOWN"
 
     aggressive = len(
 
@@ -199,6 +297,14 @@ def risk_regime(df):
 
 def generate_market_regime(df):
 
+    print("=" * 60)
+
+    print(
+        "GENERATING MARKET REGIME"
+    )
+
+    print("=" * 60)
+
     breadth = calculate_market_breadth(df)
 
     volatility = volatility_regime(df)
@@ -210,8 +316,11 @@ def generate_market_regime(df):
     sector_strength = sector_momentum(df)
 
     top_sector = (
+
         sector_strength.index[0]
+
         if len(sector_strength) > 0
+
         else "UNKNOWN"
     )
 
@@ -239,7 +348,7 @@ def generate_market_regime(df):
 
         regime = "BEAR MARKET"
 
-    return {
+    result = {
 
         "MARKET_REGIME":
             regime,
@@ -259,3 +368,11 @@ def generate_market_regime(df):
         "LEADING_SECTOR":
             top_sector
     }
+
+    print("\nMarket Regime Summary:")
+
+    for k, v in result.items():
+
+        print(f"{k}: {v}")
+
+    return result
